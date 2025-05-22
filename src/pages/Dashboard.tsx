@@ -1,4 +1,5 @@
 
+import { Link } from 'react-router-dom';
 import { Users, Calendar, Utensils } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { StatsCard } from '@/components/dashboard/widgets/StatsCard';
@@ -17,20 +18,24 @@ export default function Dashboard() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
-          <StatsCard
-            title="Total Reservations"
-            value="85"
-            description="This week"
-            trend={{ value: 12, positive: true }}
-            icon={<Calendar size={24} />}
-          />
-          <StatsCard
-            title="Unique Guests"
-            value="142"
-            description="This month"
-            trend={{ value: 8, positive: true }}
-            icon={<Users size={24} />}
-          />
+          <Link to="/reservations" className="block">
+            <StatsCard
+              title="Total Reservations"
+              value="85"
+              description="This week"
+              trend={{ value: 12, positive: true }}
+              icon={<Calendar size={24} />}
+            />
+          </Link>
+          <Link to="/guests" className="block">
+            <StatsCard
+              title="Unique Guests"
+              value="142"
+              description="This month"
+              trend={{ value: 8, positive: true }}
+              icon={<Users size={24} />}
+            />
+          </Link>
           <StatsCard
             title="Average Order Value"
             value="$36.20"

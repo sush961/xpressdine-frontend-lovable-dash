@@ -1,14 +1,39 @@
 
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Outlet } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { LogOut, Settings } from 'lucide-react';
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 
 interface DashboardLayoutProps {
   children?: ReactNode;
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { toast } = useToast();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  const handleLogout = () => {
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out."
+    });
+  };
+
+  const userInfo = {
+    name: "David Rodriguez",
+    role: "Restaurant Manager",
+    lastLogin: "2025-05-22T09:30:00",
+    initials: "DR"
+  };
+
   return (
     <div className="min-h-screen flex">
       <Sidebar className="flex-shrink-0 h-screen sticky top-0" />
@@ -19,27 +44,53 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <h1 className="text-xl font-semibold">Dashboard</h1>
             </div>
             <div className="flex items-center gap-4">
-              <button className="p-2 rounded-full hover:bg-accent transition-colors">
-                <span className="sr-only">Settings</span>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-gray-600"
-                >
-                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                  <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-              </button>
-              <div className="w-10 h-10 rounded-full bg-brand-orange text-white flex items-center justify-center font-medium">
-                XD
-              </div>
+              <Popover open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+                <PopoverTrigger asChild>
+                  <button className="w-10 h-10 rounded-full bg-brand-orange text-white flex items-center justify-center font-medium cursor-pointer transition-shadow hover:shadow-md">
+                    {userInfo.initials}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0">
+                  <div className="p-4 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-full bg-brand-orange text-white flex items-center justify-center font-medium text-lg">
+                        {userInfo.initials}
+                      </div>
+                      <div>
+                        <p className="font-medium">{userInfo.name}</p>
+                        <p className="text-sm text-muted-foreground">{userInfo.role}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Last login: {new Date(userInfo.lastLogin).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="border-t pt-3 grid grid-cols-2 gap-2">
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start" 
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          window.location.href = "/user-settings";
+                        }}
+                      >
+                        <Settings className="mr-2 h-4 w-4" />
+                        Settings
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start" 
+                        onClick={() => {
+                          handleLogout();
+                          setUserMenuOpen(false);
+                        }}
+                      >
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Logout
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </header>

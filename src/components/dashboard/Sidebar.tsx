@@ -1,16 +1,18 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Home, 
   Users, 
   Calendar, 
-  Grid3X3, 
+  Table,
   MessageSquare, 
-  CreditCard, 
+  Settings,
+  LogOut,
   ChevronLeft, 
-  ChevronRight 
+  ChevronRight,
+  Building
 } from 'lucide-react';
 
 interface SidebarLinkProps {
@@ -55,6 +57,12 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [activePath, setActivePath] = useState('/');
+  const location = useLocation();
+
+  useEffect(() => {
+    const path = location.pathname;
+    setActivePath(path);
+  }, [location]);
 
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
@@ -71,14 +79,26 @@ export function Sidebar({ className }: SidebarProps) {
       className
     )}>
       <div className="p-4 flex items-center justify-between border-b">
-        {!collapsed && (
-          <div className="font-semibold text-xl text-brand-orange">
-            XpressDine
+        {!collapsed ? (
+          <div className="flex items-center">
+            <img 
+              src="https://xpressdine.com/wp-content/uploads/2023/06/Android-app-111-01-1.png" 
+              alt="XpressDine Logo" 
+              className="h-8 mr-2" 
+            />
+          </div>
+        ) : (
+          <div className="flex justify-center w-full">
+            <img 
+              src="https://xpressdine.com/wp-content/uploads/2023/06/Android-app-111-01-1.png" 
+              alt="XpressDine Logo Icon" 
+              className="h-8" 
+            />
           </div>
         )}
         <button 
           onClick={toggleSidebar}
-          className="p-1.5 rounded-md hover:bg-accent transition-colors"
+          className="p-1.5 rounded-md hover:bg-accent transition-colors ml-auto"
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
@@ -89,7 +109,7 @@ export function Sidebar({ className }: SidebarProps) {
           to="/"
           icon={<Home size={20} />}
           label="Home"
-          active={activePath === '/'}
+          active={activePath === '/' || activePath === '/dashboard'}
           collapsed={collapsed}
           onClick={() => handleNavigation('/')}
         />
@@ -111,7 +131,7 @@ export function Sidebar({ className }: SidebarProps) {
         />
         <SidebarLink
           to="/tables"
-          icon={<Grid3X3 size={20} />}
+          icon={<Table size={20} />}
           label="Tables"
           active={activePath === '/tables'}
           collapsed={collapsed}
@@ -125,14 +145,33 @@ export function Sidebar({ className }: SidebarProps) {
           collapsed={collapsed}
           onClick={() => handleNavigation('/team')}
         />
-        <SidebarLink
-          to="/payments"
-          icon={<CreditCard size={20} />}
-          label="Payments"
-          active={activePath === '/payments'}
-          collapsed={collapsed}
-          onClick={() => handleNavigation('/payments')}
-        />
+
+        <div className="mt-8 pt-4 border-t">
+          <SidebarLink
+            to="/app-settings"
+            icon={<Settings size={20} />}
+            label="App Settings"
+            active={activePath === '/app-settings'}
+            collapsed={collapsed}
+            onClick={() => handleNavigation('/app-settings')}
+          />
+          <SidebarLink
+            to="/user-settings"
+            icon={<Users size={20} />}
+            label="User Settings"
+            active={activePath === '/user-settings'}
+            collapsed={collapsed}
+            onClick={() => handleNavigation('/user-settings')}
+          />
+          <SidebarLink
+            to="/organization-settings"
+            icon={<Building size={20} />}
+            label="Organization Settings"
+            active={activePath === '/organization-settings'}
+            collapsed={collapsed}
+            onClick={() => handleNavigation('/organization-settings')}
+          />
+        </div>
       </div>
     </div>
   );
