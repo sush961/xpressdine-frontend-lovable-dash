@@ -10,7 +10,6 @@ import Guests from "./pages/Guests";
 import Reservations from "./pages/Reservations";
 import Tables from "./pages/Tables";
 import Team from "./pages/Team";
-import AppSettings from "./pages/AppSettings";
 import UserSettings from "./pages/UserSettings";
 import OrganizationSettings from "./pages/OrganizationSettings";
 import NotFound from "./pages/NotFound";
@@ -30,7 +29,6 @@ const App = () => (
           <Route path="/reservations" element={<Reservations />} />
           <Route path="/tables" element={<Tables />} />
           <Route path="/team" element={<Team />} />
-          <Route path="/app-settings" element={<AppSettings />} />
           <Route path="/user-settings" element={<UserSettings />} />
           <Route path="/organization-settings" element={<OrganizationSettings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -7,9 +7,7 @@ import {
   Users, 
   Calendar, 
   Table,
-  MessageSquare, 
-  Settings,
-  LogOut,
+  UserCog, 
   ChevronLeft, 
   ChevronRight,
   Building
@@ -139,7 +137,7 @@ export function Sidebar({ className }: SidebarProps) {
         />
         <SidebarLink
           to="/team"
-          icon={<MessageSquare size={20} />}
+          icon={<Users size={20} />}
           label="Team Management"
           active={activePath === '/team'}
           collapsed={collapsed}
@@ -148,16 +146,8 @@ export function Sidebar({ className }: SidebarProps) {
 
         <div className="mt-8 pt-4 border-t">
           <SidebarLink
-            to="/app-settings"
-            icon={<Settings size={20} />}
-            label="App Settings"
-            active={activePath === '/app-settings'}
-            collapsed={collapsed}
-            onClick={() => handleNavigation('/app-settings')}
-          />
-          <SidebarLink
             to="/user-settings"
-            icon={<Users size={20} />}
+            icon={<UserCog size={20} />}
             label="User Settings"
             active={activePath === '/user-settings'}
             collapsed={collapsed}

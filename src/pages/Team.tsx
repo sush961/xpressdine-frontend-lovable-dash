@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Search, Filter, Settings } from 'lucide-react';
+import { Search, Filter, Settings, Plus, FileText } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,16 @@ import {
   PopoverTrigger 
 } from '@/components/ui/popover';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
 
 interface TeamMember {
   id: string;
@@ -106,12 +116,25 @@ const teamData: TeamMember[] = [
 ];
 
 export default function Team() {
+  const { toast } = useToast();
+  const [members, setMembers] = useState<TeamMember[]>(teamData);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [newMember, setNewMember] = useState({
+    name: '',
+    role: 'Waiter',
+    email: '',
+    phone: '',
+    loginStatus: 'inactive' as 'active' | 'inactive' | 'deactivated'
+  });
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+  const [isEditMemberOpen, setIsEditMemberOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   // Filter team members based on search term and filters
-  const filteredTeamMembers = teamData.filter(member => {
+  const filteredTeamMembers = members.filter(member => {
     const matchesSearch = member.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           member.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           member.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -121,6 +144,130 @@ export default function Team() {
     
     return matchesSearch && matchesRole && matchesStatus;
   });
+
+  // Get unique roles for filter
+  const roles = Array.from(new Set(members.map(member => member.role)));
+
+  const handleAddMember = () => {
+    if (!newMember.name.trim() || !newMember.email.trim()) {
+      toast({
+        title: "Error",
+        description: "Name and email are required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Generate initials from name
+    const initials = newMember.name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .substr(0, 2);
+
+    const newId = (members.length + 1).toString();
+    
+    const memberToAdd: TeamMember = {
+      id: newId,
+      name: newMember.name,
+      role: newMember.role,
+      email: newMember.email,
+      phone: newMember.phone,
+      loginStatus: newMember.loginStatus,
+      lastLogin: new Date().toISOString(),
+      initials: initials
+    };
+
+    setMembers([...members, memberToAdd]);
+    setIsAddMemberOpen(false);
+    setNewMember({
+      name: '',
+      role: 'Waiter',
+      email: '',
+      phone: '',
+      loginStatus: 'inactive'
+    });
+    
+    toast({
+      title: "Team member added",
+      description: `${newMember.name} has been successfully added.`
+    });
+  };
+  
+  const handleEditMember = () => {
+    if (!selectedMember) return;
+    
+    const updatedMembers = members.map(member => {
+      if (member.id === selectedMember.id) {
+        return selectedMember;
+      }
+      return member;
+    });
+
+    setMembers(updatedMembers);
+    setIsEditMemberOpen(false);
+    
+    toast({
+      title: "Team member updated",
+      description: `${selectedMember.name}'s information has been successfully updated.`
+    });
+  };
+  
+  const handleMemberStatusChange = (memberId: string, status: 'active' | 'inactive' | 'deactivated') => {
+    const updatedMembers = members.map(member => {
+      if (member.id === memberId) {
+        return {
+          ...member,
+          loginStatus: status,
+          ...(status === 'active' ? { lastLogin: new Date().toISOString() } : {})
+        };
+      }
+      return member;
+    });
+    
+    setMembers(updatedMembers);
+    
+    toast({
+      title: "Status updated",
+      description: `Team member status changed to ${status}.`
+    });
+  };
+  
+  const handleExport = () => {
+    // Mock CSV export functionality
+    const headers = ['ID', 'Name', 'Role', 'Email', 'Phone', 'Status', 'Last Login'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredTeamMembers.map(member => [
+        member.id,
+        member.name,
+        member.role,
+        member.email,
+        member.phone,
+        member.loginStatus,
+        new Date(member.lastLogin).toLocaleString()
+      ].join(','))
+    ].join('\n');
+    
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', 'team_export.csv');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    toast({
+      title: "Export successful",
+      description: "Team member data has been exported to CSV."
+    });
+    
+    setIsExportDialogOpen(false);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -140,15 +287,99 @@ export default function Team() {
     }
   };
 
-  // Get unique roles for filter
-  const roles = Array.from(new Set(teamData.map(member => member.role)));
-
   return (
     <DashboardLayout>
       <div className="animate-fade-in space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Team Management</h1>
-          <Button variant="default">Add Team Member</Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsExportDialogOpen(true)}
+              className="hidden sm:flex items-center gap-1"
+            >
+              <FileText className="h-4 w-4" />
+              Export
+            </Button>
+            <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="flex items-center gap-1">
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Add Team Member</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Team Member</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="member-name">Name</Label>
+                    <Input 
+                      id="member-name" 
+                      value={newMember.name} 
+                      onChange={(e) => setNewMember({...newMember, name: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-role">Role</Label>
+                    <select 
+                      id="member-role"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                      value={newMember.role}
+                      onChange={(e) => setNewMember({...newMember, role: e.target.value})}
+                    >
+                      <option value="Restaurant Manager">Restaurant Manager</option>
+                      <option value="Head Chef">Head Chef</option>
+                      <option value="Sous Chef">Sous Chef</option>
+                      <option value="Host">Host</option>
+                      <option value="Waiter">Waiter</option>
+                      <option value="Waitress">Waitress</option>
+                      <option value="Bartender">Bartender</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-email">Email</Label>
+                    <Input 
+                      id="member-email" 
+                      type="email"
+                      value={newMember.email} 
+                      onChange={(e) => setNewMember({...newMember, email: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-phone">Phone Number</Label>
+                    <Input 
+                      id="member-phone" 
+                      value={newMember.phone} 
+                      onChange={(e) => setNewMember({...newMember, phone: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="member-status">Login Status</Label>
+                    <select 
+                      id="member-status"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                      value={newMember.loginStatus}
+                      onChange={(e) => setNewMember({
+                        ...newMember, 
+                        loginStatus: e.target.value as 'active' | 'inactive' | 'deactivated'
+                      })}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Not logged in</option>
+                      <option value="deactivated">Deactivated</option>
+                    </select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsAddMemberOpen(false)}>Cancel</Button>
+                  <Button onClick={handleAddMember}>Add Team Member</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -199,7 +430,7 @@ export default function Team() {
               <PopoverTrigger asChild>
                 <Button variant="outline" className="flex items-center gap-2">
                   <Filter className="h-4 w-4" />
-                  {statusFilter ? `Status: ${statusFilter}` : 'Filter by status'}
+                  {statusFilter ? `Status: ${getStatusText(statusFilter)}` : 'Filter by status'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[200px] p-0">
@@ -285,9 +516,53 @@ export default function Team() {
                       })}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon">
-                        <Settings className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-end">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Settings className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-56 p-0">
+                            <div className="p-2 space-y-1">
+                              <Button 
+                                variant="ghost" 
+                                className="w-full justify-start text-sm"
+                                onClick={() => {
+                                  setSelectedMember(member);
+                                  setIsEditMemberOpen(true);
+                                }}
+                              >
+                                Edit Team Member
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                className="w-full justify-start text-sm"
+                                onClick={() => handleMemberStatusChange(member.id, 'active')}
+                                disabled={member.loginStatus === 'active'}
+                              >
+                                Set as Active
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                className="w-full justify-start text-sm"
+                                onClick={() => handleMemberStatusChange(member.id, 'inactive')}
+                                disabled={member.loginStatus === 'inactive'}
+                              >
+                                Set as Inactive
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                className="w-full justify-start text-sm text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleMemberStatusChange(member.id, 'deactivated')}
+                                disabled={member.loginStatus === 'deactivated'}
+                              >
+                                Deactivate Account
+                              </Button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -301,6 +576,111 @@ export default function Team() {
             </TableBody>
           </Table>
         </div>
+        
+        {/* Edit Member Dialog */}
+        <Dialog open={isEditMemberOpen} onOpenChange={setIsEditMemberOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Team Member</DialogTitle>
+            </DialogHeader>
+            {selectedMember && (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-member-name">Name</Label>
+                  <Input 
+                    id="edit-member-name" 
+                    value={selectedMember.name} 
+                    onChange={(e) => setSelectedMember({...selectedMember, name: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-member-role">Role</Label>
+                  <select 
+                    id="edit-member-role"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                    value={selectedMember.role}
+                    onChange={(e) => setSelectedMember({...selectedMember, role: e.target.value})}
+                  >
+                    <option value="Restaurant Manager">Restaurant Manager</option>
+                    <option value="Head Chef">Head Chef</option>
+                    <option value="Sous Chef">Sous Chef</option>
+                    <option value="Host">Host</option>
+                    <option value="Waiter">Waiter</option>
+                    <option value="Waitress">Waitress</option>
+                    <option value="Bartender">Bartender</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-member-email">Email</Label>
+                  <Input 
+                    id="edit-member-email" 
+                    type="email"
+                    value={selectedMember.email} 
+                    onChange={(e) => setSelectedMember({...selectedMember, email: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-member-phone">Phone Number</Label>
+                  <Input 
+                    id="edit-member-phone" 
+                    value={selectedMember.phone} 
+                    onChange={(e) => setSelectedMember({...selectedMember, phone: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-member-status">Login Status</Label>
+                  <select 
+                    id="edit-member-status"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                    value={selectedMember.loginStatus}
+                    onChange={(e) => setSelectedMember({
+                      ...selectedMember, 
+                      loginStatus: e.target.value as 'active' | 'inactive' | 'deactivated'
+                    })}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Not logged in</option>
+                    <option value="deactivated">Deactivated</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditMemberOpen(false)}>Cancel</Button>
+              <Button onClick={handleEditMember}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        
+        {/* Export Dialog */}
+        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Export Team Data</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <h4 className="text-sm font-medium">Select fields to export</h4>
+              <div className="grid grid-cols-2 gap-2">
+                {['Name', 'Role', 'Email', 'Phone', 'Status', 'Last Login'].map((field) => (
+                  <div key={field} className="flex items-center space-x-2">
+                    <input type="checkbox" id={`export-${field}`} defaultChecked className="rounded border-gray-300" />
+                    <Label htmlFor={`export-${field}`} className="text-sm">{field}</Label>
+                  </div>
+                ))}
+              </div>
+              
+              <h4 className="text-sm font-medium pt-2">Team members to export</h4>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" className="flex-1">Current View</Button>
+                <Button variant="outline" className="flex-1">All Members</Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleExport}>Export CSV</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

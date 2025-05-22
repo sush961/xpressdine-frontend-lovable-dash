@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
+import { Plus, Trash2 } from 'lucide-react';
 
 // Mock organization data
 const organizationData = {
@@ -16,14 +17,18 @@ const organizationData = {
   phone: '(555) 987-6543',
   email: 'contact@xpressdinerestaurant.com',
   website: 'https://xpressdinerestaurant.com',
+  language: 'en',
   openingHours: {
-    monday: { open: '11:00', close: '22:00' },
-    tuesday: { open: '11:00', close: '22:00' },
-    wednesday: { open: '11:00', close: '22:00' },
-    thursday: { open: '11:00', close: '23:00' },
-    friday: { open: '11:00', close: '00:00' },
-    saturday: { open: '10:00', close: '00:00' },
-    sunday: { open: '10:00', close: '21:00' }
+    monday: [{ open: '11:00', close: '22:00' }],
+    tuesday: [{ open: '11:00', close: '22:00' }],
+    wednesday: [{ open: '11:00', close: '22:00' }],
+    thursday: [{ open: '11:00', close: '23:00' }],
+    friday: [{ open: '11:00', close: '00:00' }],
+    saturday: [
+      { open: '10:00', close: '15:00' },
+      { open: '17:00', close: '00:00' },
+    ],
+    sunday: [{ open: '10:00', close: '21:00' }]
   }
 };
 
@@ -34,6 +39,8 @@ export default function OrganizationSettings() {
   const [orgPhone, setOrgPhone] = useState(organizationData.phone);
   const [orgEmail, setOrgEmail] = useState(organizationData.email);
   const [orgWebsite, setOrgWebsite] = useState(organizationData.website);
+  const [language, setLanguage] = useState(organizationData.language);
+  const [openingHours, setOpeningHours] = useState(organizationData.openingHours);
   
   const handleSaveBasicInfo = () => {
     toast({
@@ -49,6 +56,40 @@ export default function OrganizationSettings() {
     });
   };
   
+  const handleAddTimeSlot = (day: keyof typeof openingHours) => {
+    setOpeningHours(prev => ({
+      ...prev,
+      [day]: [...prev[day], { open: '09:00', close: '17:00' }]
+    }));
+  };
+  
+  const handleRemoveTimeSlot = (day: keyof typeof openingHours, index: number) => {
+    if (openingHours[day].length === 1) {
+      toast({
+        title: "Cannot remove",
+        description: "You must keep at least one time slot per day.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setOpeningHours(prev => ({
+      ...prev,
+      [day]: prev[day].filter((_, i) => i !== index)
+    }));
+  };
+  
+  const handleUpdateTimeSlot = (day: keyof typeof openingHours, index: number, field: 'open' | 'close', value: string) => {
+    setOpeningHours(prev => ({
+      ...prev,
+      [day]: prev[day].map((slot, i) => 
+        i === index ? { ...slot, [field]: value } : slot
+      )
+    }));
+  };
+  
+  const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  
   return (
     <DashboardLayout>
       <div className="animate-fade-in space-y-6">
@@ -61,6 +102,7 @@ export default function OrganizationSettings() {
             <TabsTrigger value="basic-info">Basic Information</TabsTrigger>
             <TabsTrigger value="business-hours">Business Hours</TabsTrigger>
             <TabsTrigger value="billing">Billing</TabsTrigger>
+            <TabsTrigger value="app-settings">App Settings</TabsTrigger>
           </TabsList>
           
           <TabsContent value="basic-info" className="space-y-6 mt-6">
@@ -139,28 +181,54 @@ export default function OrganizationSettings() {
               <h2 className="text-lg font-medium">Operating Hours</h2>
               <div className="border rounded-md p-4">
                 <div className="space-y-4">
-                  {Object.entries(organizationData.openingHours).map(([day, hours]) => (
-                    <div key={day} className="grid grid-cols-[150px_1fr] gap-4 items-center">
-                      <div className="font-medium capitalize">{day}</div>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="time" 
-                          defaultValue={hours.open}
-                          className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                        />
-                        <span className="text-muted-foreground">to</span>
-                        <input 
-                          type="time" 
-                          defaultValue={hours.close}
-                          className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                        />
-                        <Button variant="ghost" size="icon" className="text-muted-foreground">
-                          <span className="sr-only">More options</span>
-                          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M2 5h11M2 10h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
+                  {days.map((day) => (
+                    <div key={day} className="space-y-3">
+                      <div className="font-medium capitalize flex justify-between items-center">
+                        <span>{day}</span>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleAddTimeSlot(day as keyof typeof openingHours)}
+                          className="h-8 px-2"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add Time Slot
                         </Button>
                       </div>
+                      
+                      {openingHours[day as keyof typeof openingHours].map((slot, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <input 
+                            type="time" 
+                            value={slot.open}
+                            onChange={(e) => handleUpdateTimeSlot(day as keyof typeof openingHours, index, 'open', e.target.value)}
+                            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                          />
+                          <span className="text-muted-foreground">to</span>
+                          <input 
+                            type="time" 
+                            value={slot.close}
+                            onChange={(e) => handleUpdateTimeSlot(day as keyof typeof openingHours, index, 'close', e.target.value)}
+                            className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-muted-foreground h-8 w-8"
+                            onClick={() => handleRemoveTimeSlot(day as keyof typeof openingHours, index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      
+                      {openingHours[day as keyof typeof openingHours].length > 1 && (
+                        <div className="text-xs text-muted-foreground pl-1">
+                          {openingHours[day as keyof typeof openingHours].length} time slots
+                        </div>
+                      )}
+                      
+                      <hr className="my-2" />
                     </div>
                   ))}
                 </div>
@@ -189,6 +257,78 @@ export default function OrganizationSettings() {
               
               <div className="flex justify-end">
                 <Button onClick={handleSaveHours}>Save Business Hours</Button>
+              </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="app-settings" className="space-y-6 mt-6">
+            <div className="space-y-4">
+              <h2 className="text-lg font-medium">Application Settings</h2>
+              
+              <div className="border rounded-md p-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="app-language">Default Language</Label>
+                  <select 
+                    id="app-language" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                  >
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This will be the default language for all users in your organization.
+                  </p>
+                </div>
+              </div>
+              
+              <h2 className="text-lg font-medium">Email Notifications</h2>
+              <div className="border rounded-md p-4 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="notification-email">Notification Email</Label>
+                  <Input 
+                    id="notification-email"
+                    type="email"
+                    placeholder="notifications@yourrestaurant.com"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    System notifications will be sent to this email.
+                  </p>
+                </div>
+                
+                <div className="pt-2">
+                  <h3 className="text-sm font-medium mb-2">Notification types</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="flex items-center space-x-2">
+                      <input type="checkbox" id="notify-reservations" defaultChecked />
+                      <Label htmlFor="notify-reservations">New Reservations</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input type="checkbox" id="notify-cancellations" defaultChecked />
+                      <Label htmlFor="notify-cancellations">Reservation Cancellations</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input type="checkbox" id="notify-user-reg" />
+                      <Label htmlFor="notify-user-reg">New User Registrations</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input type="checkbox" id="notify-summary" defaultChecked />
+                      <Label htmlFor="notify-summary">Daily Summary</Label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <Button onClick={() => toast({
+                  title: "Settings saved",
+                  description: "Your application settings have been updated."
+                })}>
+                  Save App Settings
+                </Button>
               </div>
             </div>
           </TabsContent>
