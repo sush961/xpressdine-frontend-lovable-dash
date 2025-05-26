@@ -35,8 +35,8 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
       to={to}
       onClick={onClick}
       className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200',
-        collapsed ? 'justify-center' : '',
+        'flex items-center gap-3 rounded-lg transition-all duration-200',
+        collapsed ? 'p-2 justify-center' : 'px-4 py-3', // When collapsed (icon-only, true for mobile), use p-2. Else px-4 py-3.
         active 
           ? 'bg-brand-orange text-white font-medium' 
           : 'hover:bg-accent'
@@ -53,14 +53,22 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  // Determine if the sidebar is in a mobile-like (bottom bar) context based on its classes
+  // This is a proxy; a more robust way might involve a prop or context if complexity grows.
+  const isMobileView = className?.includes('md:hidden') || false;
+  
+  const [collapsed, setCollapsed] = useState(isMobileView); // Default to collapsed if mobile view
   const [activePath, setActivePath] = useState('/');
   const location = useLocation();
 
   useEffect(() => {
     const path = location.pathname;
     setActivePath(path);
-  }, [location]);
+    // If mobile view, ensure it's always in the 'collapsed' (icon-only) state for links
+    if (isMobileView) {
+      setCollapsed(true);
+    }
+  }, [location, isMobileView]);
 
   const toggleSidebar = () => {
     setCollapsed(!collapsed);
@@ -72,15 +80,18 @@ export function Sidebar({ className }: SidebarProps) {
 
   return (
     <div className={cn(
-      'flex flex-col border-r bg-card transition-all duration-300',
-      collapsed ? 'w-[70px]' : 'w-[250px]',
+      'bg-card transition-all duration-300',
+      // Desktop/tablet sidebar: flex-col, specific widths, border-r
+      'md:flex md:flex-col md:border-r',
+      isMobileView ? 'flex flex-row justify-around items-center h-16' : (collapsed ? 'w-[70px]' : 'w-[250px]'),
       className
     )}>
-      <div className="p-4 flex items-center justify-between border-b">
+      {/* Logo and Collapse Toggle - Hidden on mobile view */}
+      <div className={cn("p-4 items-center justify-between border-b", isMobileView ? "hidden" : "flex")}>
         {!collapsed ? (
           <div className="flex items-center">
             <img 
-              src="https://xpressdine.com/wp-content/uploads/2023/06/Android-app-111-01-1.png" 
+              src="/xpressdine-logo.png" //  USER: Please replace with your actual logo path in /public 
               alt="XpressDine Logo" 
               className="h-8 mr-2" 
             />
@@ -88,7 +99,7 @@ export function Sidebar({ className }: SidebarProps) {
         ) : (
           <div className="flex justify-center w-full">
             <img 
-              src="https://xpressdine.com/wp-content/uploads/2023/06/Android-app-111-01-1.png" 
+              src="/xpressdine-logo.png" // USER: Please replace with your actual logo path in /public (ideally a smaller icon version if available for collapsed state) 
               alt="XpressDine Logo Icon" 
               className="h-8" 
             />
@@ -96,13 +107,17 @@ export function Sidebar({ className }: SidebarProps) {
         )}
         <button 
           onClick={toggleSidebar}
-          className="p-1.5 rounded-md hover:bg-accent transition-colors ml-auto"
+          className={cn("p-1.5 rounded-md hover:bg-accent transition-colors ml-auto", collapsed && !isMobileView ? "mr-1" : "")}
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
       </div>
 
-      <div className="flex-1 py-4 space-y-1 px-2">
+      {/* Navigation Links */}
+      <nav className={cn(
+        "flex-1", 
+        isMobileView ? "flex flex-row items-center justify-around w-full px-1" : "py-4 space-y-1 px-2 flex flex-col"
+      )}>
         <SidebarLink
           to="/"
           icon={<Home size={20} />}
@@ -144,7 +159,8 @@ export function Sidebar({ className }: SidebarProps) {
           onClick={() => handleNavigation('/team')}
         />
 
-        <div className="mt-8 pt-4 border-t">
+        {/* Settings Links - Hidden on mobile view for simplicity */}
+        <div className={cn("mt-8 pt-4 border-t", isMobileView ? "hidden" : "block")}>
           <SidebarLink
             to="/user-settings"
             icon={<UserCog size={20} />}
@@ -162,7 +178,7 @@ export function Sidebar({ className }: SidebarProps) {
             onClick={() => handleNavigation('/organization-settings')}
           />
         </div>
-      </div>
+      </nav>
     </div>
   );
 }

@@ -39,9 +39,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen flex">
-      <Sidebar className="flex-shrink-0 h-screen sticky top-0" />
-      <div className="flex-1">
+    <div className="min-h-screen flex flex-col md:flex-row">
+      {/* Sidebar for larger screens */}
+      <Sidebar className="hidden md:flex flex-shrink-0 h-screen sticky top-0" />
+      
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col"> {/* Ensure main content area also flexes column for header/main stacking */}
         <header className="border-b bg-card sticky top-0 z-10">
           <div className="flex items-center justify-between px-6 h-16">
             <div>
@@ -146,10 +149,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </div>
         </header>
-        <main className="p-6">
+        <main className="p-6 flex-grow"> {/* Use flex-grow for main content to take available space */}
           {children || <Outlet />}
         </main>
       </div>
+      
+      {/* Bottom Navbar for mobile screens */}
+      <Sidebar className="md:hidden w-full fixed bottom-0 left-0 z-20 border-t bg-card" />
     </div>
   );
 }

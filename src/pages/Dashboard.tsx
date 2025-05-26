@@ -5,22 +5,52 @@ import { Users, Calendar, Utensils, Plus, BarChartBig, PieChart } from 'lucide-r
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { StatsCard } from '@/components/dashboard/widgets/StatsCard';
 import { ReservationsList } from '@/components/dashboard/widgets/ReservationsList';
-import { ActivityChart } from '@/components/dashboard/widgets/ActivityChart';
+import { ActivityChart, type ActivityChartDataPoint } from '@/components/dashboard/widgets/ActivityChart';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useToast } from '@/components/ui/use-toast';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [revenueFilter, setRevenueFilter] = useState<'day' | 'week' | 'month'>('month');
+  const [dashboardStats] = useState({
+    totalReservations: { value: '73', description: 'This week', trend: { value: 5, positive: true } },
+    uniqueGuests: { value: '280', description: 'This month', trend: { value: 15, positive: false } },
+    averageOrderValue: { value: '$45.50', description: 'Per guest this month', trend: { value: 2.75, positive: true } },
+  });
+
+  const [activityGraphData] = useState<ActivityChartDataPoint[]>([
+    { date: '2025-05-20', name: 'May 20', reservations: 10, revenue: 450 },
+    { date: '2025-05-21', name: 'May 21', reservations: 12, revenue: 540 },
+    { date: '2025-05-22', name: 'May 22', reservations: 8, revenue: 380 },
+    { date: '2025-05-23', name: 'May 23', reservations: 15, revenue: 680 },
+    { date: '2025-05-24', name: 'May 24', reservations: 18, revenue: 820 },
+    { date: '2025-05-25', name: 'May 25', reservations: 25, revenue: 1150 },
+    { date: '2025-05-26', name: 'May 26', reservations: 22, revenue: 1050 },
+  ]);
+
+  const isLoading = false;
   
   const handleCardClick = (destination: string) => {
     navigate(destination);
   };
-  
+
+  const mapFilterToApiPeriod = (filter: 'day' | 'week' | 'month') => {
+    if (filter === 'day') return 'daily';
+    if (filter === 'week') return 'weekly';
+    return 'monthly'; // month
+  };
+
+  const getChartTitle = (filter: 'day' | 'week' | 'month') => {
+    if (filter === 'day') return 'Daily Activity';
+    if (filter === 'week') return 'Weekly Activity';
+    return 'Monthly Activity'; // month
+  };
+
+  // Using direct mock data in state initialization
+  // No need for useEffect or API calls
+
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in relative">
@@ -72,36 +102,57 @@ export default function Dashboard() {
             className="block cursor-pointer transition transform hover:scale-[1.02] hover:shadow-md"
             onClick={() => handleCardClick('/reservations')}
           >
-            <StatsCard
-              title="Total Reservations"
-              value="85"
-              description="This week"
-              trend={{ value: 12, positive: true }}
-              icon={<Calendar size={24} />}
-            />
+            {isLoading || !dashboardStats ? (
+              <StatsCard title="Total Reservations" value="Loading..." icon={<Calendar size={24} />} />
+            ) : (
+              <StatsCard
+                title="Total Reservations"
+                value={dashboardStats.totalReservations.value.toString()}
+                description={dashboardStats.totalReservations.description}
+                trend={{
+                  value: dashboardStats.totalReservations.trend.value,
+                  positive: dashboardStats.totalReservations.trend.positive,
+                }}
+                icon={<Calendar size={24} />}
+              />
+            )}
           </div>
           <div 
             className="block cursor-pointer transition transform hover:scale-[1.02] hover:shadow-md"
             onClick={() => handleCardClick('/guests')}
           >
-            <StatsCard
-              title="Unique Guests"
-              value="142"
-              description="This month"
-              trend={{ value: 8, positive: true }}
-              icon={<Users size={24} />}
-            />
+            {isLoading || !dashboardStats ? (
+              <StatsCard title="Unique Guests" value="Loading..." icon={<Users size={24} />} />
+            ) : (
+              <StatsCard
+                title="Unique Guests"
+                value={dashboardStats.uniqueGuests.value.toString()}
+                description={dashboardStats.uniqueGuests.description}
+                trend={{
+                  value: dashboardStats.uniqueGuests.trend.value,
+                  positive: dashboardStats.uniqueGuests.trend.positive,
+                }}
+                icon={<Users size={24} />}
+              />
+            )}
           </div>
           <div 
             className="block cursor-pointer transition transform hover:scale-[1.02] hover:shadow-md"
           >
-            <StatsCard
-              title="Average Order Value"
-              value="$36.20"
-              description="Per guest"
-              trend={{ value: 3, positive: false }}
-              icon={<Utensils size={24} />}
-            />
+            {isLoading || !dashboardStats ? (
+              <StatsCard title="Average Order Value" value="Loading..." icon={<Utensils size={24} />} />
+            ) : (
+              <StatsCard
+                title="Average Order Value"
+                value={dashboardStats.averageOrderValue.value} // Already a string from API
+                description={dashboardStats.averageOrderValue.description}
+                trend={{
+                  value: dashboardStats.averageOrderValue.trend.value,
+                  positive: dashboardStats.averageOrderValue.trend.positive,
+                }}
+                icon={<Utensils size={24} />}
+              />
+            )}
           </div>
         </div>
 
@@ -147,7 +198,16 @@ export default function Dashboard() {
               </TabsList>
               
               <TabsContent value="chart">
-                <ActivityChart />
+                {isLoading || !activityGraphData ? (
+                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                    Loading chart data...
+                  </div>
+                ) : (
+                  <ActivityChart 
+                    title={getChartTitle(revenueFilter)} 
+                    data={activityGraphData} 
+                  />
+                )}
               </TabsContent>
               
               <TabsContent value="pie">
@@ -191,10 +251,7 @@ export default function Dashboard() {
                 <span>Month-over-month growth: +8.4%</span>
                 <button 
                   className="text-primary underline"
-                  onClick={() => toast({
-                    title: "Report details",
-                    description: "Full table usage report will be available in a future update."
-                  })}
+                  onClick={() => alert("Full table usage report will be available in a future update.")}
                 >
                   See full report
                 </button>

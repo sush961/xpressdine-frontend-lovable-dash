@@ -1,4 +1,5 @@
 
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Mock data for reservations
@@ -38,11 +39,17 @@ const reservations = [
 ];
 
 export function ReservationsList() {
+  const navigate = useNavigate();
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-lg font-medium">Today's Reservations</CardTitle>
-        <button className="text-sm text-brand-orange font-medium">View All</button>
+        <button 
+          className="text-sm text-brand-orange font-medium hover:underline"
+          onClick={() => navigate('/reservations?filter=today')}
+        >
+          View All
+        </button>
       </CardHeader>
       <CardContent className="px-6 pb-4">
         <div className="space-y-4">

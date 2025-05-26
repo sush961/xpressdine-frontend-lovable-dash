@@ -1,4 +1,5 @@
 
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   BarChart,
@@ -10,25 +11,28 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-// Mock data for the chart
-const data = [
-  { name: 'Mon', reservations: 12, revenue: 840 },
-  { name: 'Tue', reservations: 19, revenue: 1250 },
-  { name: 'Wed', reservations: 15, revenue: 980 },
-  { name: 'Thu', reservations: 27, revenue: 1640 },
-  { name: 'Fri', reservations: 34, revenue: 2100 },
-  { name: 'Sat', reservations: 42, revenue: 2700 },
-  { name: 'Sun', reservations: 31, revenue: 2100 },
-];
+export interface ActivityChartDataPoint {
+  name: string;
+  date?: string; // Optional for backward compatibility
+  reservations: number;
+  revenue: number;
+}
 
-export function ActivityChart() {
+interface ActivityChartProps {
+  title: string;
+  data: ActivityChartDataPoint[];
+}
+
+export function ActivityChart({ title, data }: ActivityChartProps) {
+  const [metricType, setMetricType] = useState<'reservations' | 'revenue'>('reservations');
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg font-medium">Weekly Activity</CardTitle>
+        <CardTitle className="text-lg font-medium">{title}</CardTitle>
         <select 
           className="text-sm bg-transparent border rounded px-2 py-1 outline-none focus:ring-1 focus:ring-brand-orange"
-          defaultValue="reservations"
+          value={metricType}
+          onChange={(e) => setMetricType(e.target.value as 'reservations' | 'revenue')}
         >
           <option value="reservations">Reservations</option>
           <option value="revenue">Revenue</option>
@@ -38,7 +42,7 @@ export function ActivityChart() {
         <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
-              data={data}
+              data={data || []}
               margin={{
                 top: 16,
                 right: 16,
@@ -57,7 +61,7 @@ export function ActivityChart() {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 12 }}
-                tickFormatter={(value) => `${value}`}
+                tickFormatter={(value) => metricType === 'revenue' ? `$${value}` : `${value}`}
               />
               <Tooltip
                 cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
@@ -67,7 +71,7 @@ export function ActivityChart() {
                       <div className="bg-white p-2 border rounded shadow text-sm">
                         <p className="font-medium">{label}</p>
                         <p className="text-brand-orange">
-                          Reservations: {payload[0].value}
+                          {metricType === 'reservations' ? 'Reservations' : 'Revenue'}: {metricType === 'revenue' ? '$' : ''}{payload[0].value}
                         </p>
                       </div>
                     );
@@ -76,7 +80,7 @@ export function ActivityChart() {
                 }}
               />
               <Bar 
-                dataKey="reservations" 
+                dataKey={metricType} 
                 fill="#FF6B35"
                 radius={[4, 4, 0, 0]} 
               />

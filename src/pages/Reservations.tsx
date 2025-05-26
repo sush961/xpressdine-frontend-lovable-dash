@@ -35,7 +35,14 @@ interface Reservation {
   billAmount?: number;
 }
 
-// Mock data - would be fetched from API in real implementation
+// Helper function to create a date for today with a specific time
+const todayAtHour = (hours: number, minutes: number) => {
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+};
+
+// Mock data - using today's date for all reservations
 const initialReservationsData: Reservation[] = [
   {
     id: 'r1',
@@ -43,7 +50,7 @@ const initialReservationsData: Reservation[] = [
     guestName: 'John Smith',
     guestEmail: 'john.smith@example.com',
     guestInitials: 'JS',
-    date: new Date(2025, 4, 22), // May 22, 2025
+    date: todayAtHour(19, 0),
     time: '19:00',
     partySize: 2,
     tableNumber: 'T12',
@@ -56,11 +63,12 @@ const initialReservationsData: Reservation[] = [
     guestName: 'Sarah Johnson',
     guestEmail: 'sarah.j@example.com',
     guestInitials: 'SJ',
-    date: new Date(2025, 4, 22), // May 22, 2025
+    date: todayAtHour(20, 30),
     time: '20:30',
     partySize: 4,
     tableNumber: 'T08',
-    status: 'confirmed'
+    status: 'confirmed',
+    specialRequests: 'Window seat preferred'
   },
   {
     id: 'r3',
@@ -68,11 +76,12 @@ const initialReservationsData: Reservation[] = [
     guestName: 'Michael Chen',
     guestEmail: 'michael.c@example.com',
     guestInitials: 'MC',
-    date: new Date(2025, 4, 23), // May 23, 2025
+    date: todayAtHour(18, 30),
     time: '18:30',
     partySize: 3,
     tableNumber: 'T04',
-    status: 'pending'
+    status: 'pending',
+    specialRequests: 'Allergic to shellfish'
   },
   {
     id: 'r4',
@@ -80,30 +89,61 @@ const initialReservationsData: Reservation[] = [
     guestName: 'Emma Wilson',
     guestEmail: 'emma.w@example.com',
     guestInitials: 'EW',
-    date: new Date(2025, 4, 21), // May 21, 2025
+    date: todayAtHour(19, 30),
     time: '19:30',
     partySize: 2,
     tableNumber: 'T06',
     status: 'completed',
-    billAmount: 142.75
+    billAmount: 142.75,
+    specialRequests: 'Celebrating birthday'
   },
   {
     id: 'r5',
-    guestId: '1',
-    guestName: 'John Smith',
-    guestEmail: 'john.smith@example.com',
-    guestInitials: 'JS',
-    date: new Date(2025, 4, 30), // May 30, 2025
+    guestId: '5',
+    guestName: 'David Kim',
+    guestEmail: 'david.k@example.com',
+    guestInitials: 'DK',
+    date: todayAtHour(20, 0),
+    time: '20:00',
+    partySize: 6,
+    tableNumber: 'T10',
+    status: 'confirmed',
+    specialRequests: 'Business dinner, need quiet area'
+  },
+  {
+    id: 'r6',
+    guestId: '6',
+    guestName: 'Lisa Wong',
+    guestEmail: 'lisa.w@example.com',
+    guestInitials: 'LW',
+    date: todayAtHour(18, 0),
     time: '18:00',
-    partySize: 5,
-    tableNumber: 'T02',
-    status: 'confirmed'
+    partySize: 2,
+    tableNumber: 'T03',
+    status: 'confirmed',
+    specialRequests: 'Vegetarian'
+  },
+  {
+    id: 'r7',
+    guestId: '7',
+    guestName: 'Robert Taylor',
+    guestEmail: 'robert.t@example.com',
+    guestInitials: 'RT',
+    date: todayAtHour(21, 0),
+    time: '21:00',
+    partySize: 4,
+    tableNumber: 'T07',
+    status: 'pending',
+    specialRequests: 'Will arrive 15 mins late'
   }
-];
+]
 
 type DateFilterType = 'today' | 'week' | 'month' | 'custom';
 
 export default function Reservations() {
+  // Defensive UI before any logic or hooks
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const guestIdFromQuery = queryParams.get('guest');
@@ -111,10 +151,7 @@ export default function Reservations() {
   const { toast } = useToast();
 
   const [reservations, setReservations] = useState<Reservation[]>(initialReservationsData);
-  const [dateRange, setDateRange] = useState<{
-    from: Date | undefined;
-    to: Date | undefined;
-  }>({
+  const [dateRange, setDateRange] = useState({
     from: new Date(),
     to: new Date()
   });
@@ -138,6 +175,13 @@ export default function Reservations() {
 
   const today = new Date();
 
+  // Use mock data directly
+  useEffect(() => {
+    setLoading(true);
+    setReservations(initialReservationsData);
+    setLoading(false);
+  }, []);
+  
   // Find reservation by ID if specified in query params
   useEffect(() => {
     if (reservationIdFromQuery) {
@@ -198,6 +242,18 @@ export default function Reservations() {
     
     setFilteredReservations(filtered);
   }, [dateFilter, dateRange, statusFilter, guestIdFromQuery, reservations]);
+
+  // Defensive UI before any logic or hooks
+  if (loading) {
+    return <div>Loading reservations...</div>;
+  }
+  if (fetchError) {
+    return <div>Failed to Load Reservations: {fetchError}</div>;
+  }
+  if (!Array.isArray(filteredReservations)) {
+    return <div>Failed to Load Reservations: Data is not an array.</div>;
+  }
+
 
   const handleReservationSelect = (reservation: Reservation) => {
     setSelectedReservation(reservation);
@@ -568,7 +624,14 @@ export default function Reservations() {
                             from: dateRange.from,
                             to: dateRange.to
                           }}
-                          onSelect={setDateRange}
+                          onSelect={(range) => {
+                            if (range?.from && range?.to) {
+                              setDateRange({
+                                from: range.from,
+                                to: range.to
+                              });
+                            }
+                          }}
                           numberOfMonths={2}
                           className="p-3 pointer-events-auto"
                         />

@@ -27,42 +27,47 @@ export function TableLayoutView({
     }
   };
 
-  const getTableSize = (capacity: number, isLinked: boolean, linkedWith?: string[]) => {
-    let totalCapacity = capacity;
-    
-    if (isLinked && linkedWith) {
-      totalCapacity = linkedWith.reduce((total, id) => {
-        const linkedTable = tables.find(t => t.id === id);
-        return total + (linkedTable?.capacity || 0);
-      }, capacity);
+  const getTableSizeAndCapacity = (table: TableData) => {
+    let effectiveCapacity = table.capacity;
+    if (table.isLinked && table.linkedWith && table.linkedWith.length > 0) {
+      effectiveCapacity = table.linkedWith.reduce((currentSum, linkedTableId) => {
+        const foundLinkedTable = tables.find(t => t.id === linkedTableId);
+        return currentSum + (foundLinkedTable?.capacity || 0);
+      }, table.capacity); // Start with current table's capacity
     }
     
-    if (totalCapacity <= 2) return 'w-20 h-20';
-    if (totalCapacity <= 4) return 'w-24 h-24';
-    if (totalCapacity <= 6) return 'w-28 h-24';
-    if (totalCapacity <= 8) return 'w-32 h-28';
-    return 'w-40 h-32';
+    let sizeClass = '';
+    if (effectiveCapacity <= 2) sizeClass = 'w-20 h-20';
+    else if (effectiveCapacity <= 4) sizeClass = 'w-24 h-24';
+    else if (effectiveCapacity <= 6) sizeClass = 'w-28 h-24';
+    else if (effectiveCapacity <= 8) sizeClass = 'w-32 h-28';
+    else sizeClass = 'w-40 h-32';
+    
+    return { sizeClass, effectiveCapacity };
   };
 
   return (
     <div className="bg-muted p-6 rounded-lg min-h-[600px] relative border border-dashed">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
         {tables.map((table) => {
           const isSelected = selectedTables.includes(table.id);
           const linkedClasses = table.isLinked ? 'ring-2 ring-blue-500' : '';
           const selectedClasses = isSelected ? 'ring-2 ring-primary ring-offset-2' : '';
+          const { sizeClass, effectiveCapacity } = getTableSizeAndCapacity(table);
           
           return (
             <div 
               key={table.id}
-              className={`relative ${getTableSize(table.capacity, table.isLinked, table.linkedWith)} rounded-md ${
+              className={`relative ${sizeClass} rounded-md ${
                 table.isLinked ? 'bg-blue-100' : 'bg-white'
               } shadow-md hover:shadow-lg transition-all flex flex-col items-center justify-center cursor-pointer ${linkedClasses} ${selectedClasses} group`}
               onClick={() => onSelectTable(table.id)}
             >
               <div className={`absolute -top-2 -right-2 w-4 h-4 rounded-full ${getStatusColor(table.status)}`} title={table.status}></div>
               <span className="font-semibold">{table.name}</span>
-              <span className="text-xs text-muted-foreground">{table.capacity} seats</span>
+              <span className="text-xs text-muted-foreground">
+                {effectiveCapacity} seats {table.isLinked ? "(group)" : ""}
+              </span>
 
               {/* Edit button that shows on hover */}
               <div className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 transition-opacity">
