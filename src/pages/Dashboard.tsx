@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Users, Calendar, Utensils, Plus, BarChartBig, PieChart } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
@@ -9,6 +9,7 @@ import { ActivityChart, type ActivityChartDataPoint } from '@/components/dashboa
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PieChart as RechartsPC, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -20,15 +21,54 @@ export default function Dashboard() {
     averageOrderValue: { value: '$45.50', description: 'Per guest this month', trend: { value: 2.75, positive: true } },
   });
 
-  const [activityGraphData] = useState<ActivityChartDataPoint[]>([
-    { date: '2025-05-20', name: 'May 20', reservations: 10, revenue: 450 },
-    { date: '2025-05-21', name: 'May 21', reservations: 12, revenue: 540 },
-    { date: '2025-05-22', name: 'May 22', reservations: 8, revenue: 380 },
-    { date: '2025-05-23', name: 'May 23', reservations: 15, revenue: 680 },
-    { date: '2025-05-24', name: 'May 24', reservations: 18, revenue: 820 },
-    { date: '2025-05-25', name: 'May 25', reservations: 25, revenue: 1150 },
-    { date: '2025-05-26', name: 'May 26', reservations: 22, revenue: 1050 },
-  ]);
+  // Generate mock data that works for any month, including June
+  const generateMockData = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    // Generate daily data (hours of the day)
+    const dailyData: ActivityChartDataPoint[] = [
+      { name: '8 AM', reservations: 3, revenue: 120 },
+      { name: '10 AM', reservations: 5, revenue: 210 },
+      { name: '12 PM', reservations: 12, revenue: 580 },
+      { name: '2 PM', reservations: 8, revenue: 340 },
+      { name: '4 PM', reservations: 6, revenue: 290 },
+      { name: '6 PM', reservations: 15, revenue: 720 },
+      { name: '8 PM', reservations: 18, revenue: 850 },
+    ];
+    
+    // Generate weekly data (days of the week)
+    const weeklyData: ActivityChartDataPoint[] = [
+      { name: 'Mon', reservations: 22, revenue: 980 },
+      { name: 'Tue', reservations: 18, revenue: 820 },
+      { name: 'Wed', reservations: 24, revenue: 1100 },
+      { name: 'Thu', reservations: 28, revenue: 1250 },
+      { name: 'Fri', reservations: 35, revenue: 1650 },
+      { name: 'Sat', reservations: 42, revenue: 1950 },
+      { name: 'Sun', reservations: 30, revenue: 1350 },
+    ];
+    
+    // Generate monthly data (weeks of the month)
+    const monthlyData: ActivityChartDataPoint[] = [
+      { name: 'Week 1', reservations: 120, revenue: 5400 },
+      { name: 'Week 2', reservations: 145, revenue: 6500 },
+      { name: 'Week 3', reservations: 160, revenue: 7200 },
+      { name: 'Week 4', reservations: 180, revenue: 8100 },
+    ];
+    
+    return { dailyData, weeklyData, monthlyData };
+  };
+  
+  const { dailyData: mockDailyData, weeklyData: mockWeeklyData, monthlyData: mockMonthlyData } = generateMockData();
+  
+  // Distribution data for pie chart
+  const distributionData = [
+    { name: 'Lunch', value: 38, color: '#3B82F6' },  // blue-500
+    { name: 'Dinner', value: 45, color: '#22C55E' },  // green-500
+    { name: 'Drinks', value: 12, color: '#F97316' },  // orange-500
+    { name: 'Other', value: 5, color: '#A855F7' },    // purple-500
+  ];
 
   const isLoading = false;
   
@@ -47,9 +87,34 @@ export default function Dashboard() {
     if (filter === 'week') return 'Weekly Activity';
     return 'Monthly Activity'; // month
   };
-
-  // Using direct mock data in state initialization
-  // No need for useEffect or API calls
+  
+  // Select the appropriate data based on the filter
+  const activityGraphData = useMemo(() => {
+    if (revenueFilter === 'day') return mockDailyData;
+    if (revenueFilter === 'week') return mockWeeklyData;
+    return mockMonthlyData; // month
+  }, [revenueFilter]);
+  
+  // Function to format the date for the current month/year regardless of when viewed
+  const formatCurrentDate = () => {
+    const now = new Date();
+    return `${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}`;
+  };
+  
+  // Update the last updated timestamp to always show the current date
+  const getLastUpdatedTime = () => {
+    const now = new Date();
+    const day = now.getDate();
+    const month = now.toLocaleString('default', { month: 'long' });
+    const year = now.getFullYear();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const formattedHours = hours % 12 || 12;
+    const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
+    
+    return `${day} ${month} ${year}, ${formattedHours}:${formattedMinutes} ${ampm}`;
+  };
 
   return (
     <DashboardLayout>
@@ -57,7 +122,7 @@ export default function Dashboard() {
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">Last updated: 22 May 2025, 12:42 PM</span>
+            <span className="text-sm text-muted-foreground">Last updated: {getLastUpdatedTime()}</span>
             <Dialog open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
               <DialogTrigger asChild>
                 <Button size="icon" className="rounded-full h-10 w-10" aria-label="Quick add">
@@ -211,31 +276,33 @@ export default function Dashboard() {
               </TabsContent>
               
               <TabsContent value="pie">
-                <div className="flex justify-center items-center p-4">
-                  <img
-                    src="https://placehold.co/600x200/e2e8f0/475569?text=Revenue+Distribution"
-                    alt="Revenue Distribution"
-                    className="rounded-md"
-                  />
+                <div className="h-[300px] w-full p-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPC>
+                      <Pie
+                        data={distributionData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      >
+                        {distributionData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value) => [`${value}%`, 'Revenue Share']}
+                      />
+                      <Legend />
+                    </RechartsPC>
+                  </ResponsiveContainer>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                    <span className="text-xs">Lunch (38%)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <span className="text-xs">Dinner (45%)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                    <span className="text-xs">Drinks (12%)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                    <span className="text-xs">Other (5%)</span>
-                  </div>
-                </div>
+                <h3 className="text-center text-sm font-medium mt-2 text-muted-foreground">
+                  Revenue Distribution for {formatCurrentDate()}
+                </h3>
               </TabsContent>
             </Tabs>
             
