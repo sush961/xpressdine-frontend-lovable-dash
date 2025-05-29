@@ -24,10 +24,12 @@ export function ReservationsList() {
       setError(null);
       try {
         const today = formatDateFns(new Date(), 'yyyy-MM-dd');
-        // IMPORTANT: If your API is on a different domain, use the full URL:
-        // const apiUrl = process.env.REACT_APP_API_BASE_URL || ''; 
-        // const response = await fetch(`${apiUrl}/api/reservations/today`);
-        const response = await fetch(`/api/reservations/today`); // Updated to the correct endpoint
+        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        if (!apiBaseUrl) {
+          console.error('API_BASE_URL is not set. Ensure NEXT_PUBLIC_API_BASE_URL is configured.');
+          throw new Error('API endpoint is not configured. Please contact support.');
+        }
+        const response = await fetch(`${apiBaseUrl}/api/reservations/today`);
         
         if (!response.ok) {
           let errorText = `API request failed with status ${response.status}`;
