@@ -24,9 +24,9 @@ export function ReservationsList() {
       setError(null);
       try {
         const today = formatDateFns(new Date(), 'yyyy-MM-dd');
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
         if (!apiBaseUrl) {
-          console.error('API_BASE_URL is not set. Ensure NEXT_PUBLIC_API_BASE_URL is configured.');
+          console.error('API_BASE_URL is not set. Ensure VITE_API_BASE_URL is configured in Vercel and prefixed correctly.');
           throw new Error('API endpoint is not configured. Please contact support.');
         }
         const response = await fetch(`${apiBaseUrl}/api/reservations/today`);
