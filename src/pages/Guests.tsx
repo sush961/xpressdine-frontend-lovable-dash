@@ -21,7 +21,6 @@ import {
   DialogTrigger 
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 
 interface Guest {
   id: string;
@@ -515,11 +514,7 @@ export default function Guests() {
                     Reservation history for this guest will be shown here. (Feature under development)
                   </p>
                   <div className="mt-4">
-                    <Link
-                      to={selectedGuest
-                        ? `/reservations/new?guestId=${selectedGuest.id}&guestName=${encodeURIComponent(selectedGuest.name)}`
-                        : '#'}
-                    >
+                    <Link to={getReservationUrl(selectedGuest)}>
                       <Button>
                         Create New Reservation
                       </Button>
