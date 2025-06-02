@@ -244,11 +244,6 @@ export default function Guests() {
     
     setIsImportOpen(false);
     setCsvFile(null);
-    
-    toast({
-      title: "Import successful",
-      description: `${csvFile.name} has been imported successfully.`
-    });
   };
 
   return (
@@ -520,18 +515,15 @@ export default function Guests() {
                     Reservation history for this guest will be shown here. (Feature under development)
                   </p>
                   <div className="mt-4">
-                    {(() => {
-                      const reservationUrl = selectedGuest 
+                    <Link
+                      to={selectedGuest
                         ? `/reservations/new?guestId=${selectedGuest.id}&guestName=${encodeURIComponent(selectedGuest.name)}`
-                        : '#';
-                      return (
-                        <Link to={reservationUrl}>
-                          <Button>
-                            Create New Reservation
-                          </Button>
-                        </Link>
-                      );
-                    })()}
+                        : '#'}
+                    >
+                      <Button>
+                        Create New Reservation
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </TabsContent>
