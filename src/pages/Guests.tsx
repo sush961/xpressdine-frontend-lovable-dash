@@ -50,6 +50,11 @@ interface Reservation {
 const API_BASE_URL = 'https://demo.xpressdine.com/api'; // Production API endpoint
 
 export default function Guests() {
+  // Helper to generate reservation URL for a guest
+  const getReservationUrl = (guest: Guest) => {
+    return `/reservations/new?guestId=${guest.id}&guestName=${encodeURIComponent(guest.name)}&guestEmail=${encodeURIComponent(guest.email || '')}&guestPhone=${encodeURIComponent(guest.phone || '')}`;
+  };
+
   const { toast } = useToast();
   const [guests, setGuests] = useState<Guest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -523,6 +528,7 @@ export default function Guests() {
                 </div>
               </TabsContent>
             </Tabs>
+          </div> {/* Add this closing div tag */}
           {/* End of selectedGuest main container */}
         )}
       </div>
