@@ -520,11 +520,18 @@ export default function Guests() {
                     Reservation history for this guest will be shown here. (Feature under development)
                   </p>
                   <div className="mt-4">
-                    <Link to={selectedGuest ? `/reservations/new?guestId=${selectedGuest.id}&guestName=${encodeURIComponent(selectedGuest.name)}` : '#'}>
-                      <Button>
-                        Create New Reservation
-                      </Button>
-                    </Link>
+                    {(() => {
+                      const reservationUrl = selectedGuest 
+                        ? `/reservations/new?guestId=${selectedGuest.id}&guestName=${encodeURIComponent(selectedGuest.name)}`
+                        : '#';
+                      return (
+                        <Link to={reservationUrl}>
+                          <Button>
+                            Create New Reservation
+                          </Button>
+                        </Link>
+                      );
+                    })()}
                   </div>
                 </div>
               </TabsContent>
