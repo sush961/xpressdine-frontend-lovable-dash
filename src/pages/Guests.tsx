@@ -87,7 +87,7 @@ export default function Guests() {
           .map((part: string) => part[0])
           .join('')
           .toUpperCase()
-          .substr(0, 2),
+          .substring(0, 2),
       }));
       setGuests(formattedGuests);
     } catch (error) {
@@ -134,7 +134,7 @@ export default function Guests() {
       .map(part => part[0])
       .join('')
       .toUpperCase()
-      .substr(0, 2);
+      .substring(0, 2);
 
     // POST to API
     try {
