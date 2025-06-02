@@ -529,8 +529,8 @@ export default function Guests() {
               </TabsContent>
             </Tabs>
           {/* Add this closing div tag */}
-          </div>
           {/* End of selectedGuest main container */}
+          </div>
         )}
       </div>
     </DashboardLayout>
