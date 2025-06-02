@@ -528,7 +528,8 @@ export default function Guests() {
                 </div>
               </TabsContent>
             </Tabs>
-          </div> {/* Add this closing div tag */}
+          {/* Add this closing div tag */}
+          </div>
           {/* End of selectedGuest main container */}
         )}
       </div>
