@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, FileText } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
@@ -26,13 +26,12 @@ import { Textarea } from '@/components/ui/textarea';
 interface Guest {
   id: string;
   name: string;
-  email: string;
+  email?: string; // Make email optional to match DB and API flexibility
   phone: string;
-  visitCount: number;
-  lastVisit: string;
-  dietaryRestrictions?: string;
-  preferences?: string;
+  created_at?: string;
+  updated_at?: string;
   initials: string;
+  // Removed visitCount, lastVisit, dietaryRestrictions, preferences as they are not in the API
 }
 
 interface Reservation {
@@ -45,76 +44,16 @@ interface Reservation {
   billAmount?: number;
 }
 
-// Sample data - would be fetched from API in real implementation
-const guestsData: Guest[] = [
-  {
-    id: '1',
-    name: 'John Smith',
-    email: 'john.smith@example.com',
-    phone: '(555) 123-4567',
-    visitCount: 8,
-    lastVisit: '2025-05-15',
-    dietaryRestrictions: 'Gluten-free',
-    preferences: 'Window seating',
-    initials: 'JS'
-  },
-  {
-    id: '2',
-    name: 'Sarah Johnson',
-    email: 'sarah.j@example.com',
-    phone: '(555) 987-6543',
-    visitCount: 12,
-    lastVisit: '2025-05-18',
-    dietaryRestrictions: 'Vegetarian',
-    preferences: 'Quiet corner',
-    initials: 'SJ'
-  },
-  {
-    id: '3',
-    name: 'Michael Chen',
-    email: 'michael.c@example.com',
-    phone: '(555) 456-7890',
-    visitCount: 3,
-    lastVisit: '2025-05-10',
-    dietaryRestrictions: '',
-    preferences: 'Bar seating',
-    initials: 'MC'
-  },
-  {
-    id: '4',
-    name: 'Emma Wilson',
-    email: 'emma.w@example.com',
-    phone: '(555) 789-0123',
-    visitCount: 5,
-    lastVisit: '2025-05-05',
-    dietaryRestrictions: 'Dairy-free',
-    preferences: 'Patio',
-    initials: 'EW'
-  }
-];
+// Mock data (guestsData) removed as live data is fetched from API.
 
-const reservationsData: Record<string, Reservation[]> = {
-  '1': [
-    { id: 'r1', date: '2025-05-15', time: '19:00', partySize: 2, tableNumber: 'T12', status: 'completed', billAmount: 145.80 },
-    { id: 'r2', date: '2025-04-22', time: '20:00', partySize: 4, tableNumber: 'T08', status: 'completed', billAmount: 237.50 },
-    { id: 'r3', date: '2025-05-30', time: '18:30', partySize: 2, tableNumber: 'T15', status: 'confirmed' }
-  ],
-  '2': [
-    { id: 'r4', date: '2025-05-18', time: '18:00', partySize: 6, tableNumber: 'T01', status: 'completed', billAmount: 342.75 },
-    { id: 'r5', date: '2025-05-25', time: '19:30', partySize: 2, tableNumber: 'T07', status: 'confirmed' }
-  ],
-  '3': [
-    { id: 'r6', date: '2025-05-10', time: '20:30', partySize: 3, tableNumber: 'T04', status: 'completed', billAmount: 189.20 }
-  ],
-  '4': [
-    { id: 'r7', date: '2025-05-05', time: '19:00', partySize: 4, tableNumber: 'T09', status: 'completed', billAmount: 254.30 },
-    { id: 'r8', date: '2025-05-22', time: '18:30', partySize: 2, tableNumber: 'T03', status: 'confirmed' }
-  ]
-};
+// Mock data (reservationsData) removed.
+
+const API_BASE_URL = 'https://demo.xpressdine.com/api'; // Production API endpoint
 
 export default function Guests() {
   const { toast } = useToast();
-  const [guests, setGuests] = useState<Guest[]>(guestsData);
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [activeTab, setActiveTab] = useState('info');
@@ -123,17 +62,50 @@ export default function Guests() {
   const [newGuest, setNewGuest] = useState({
     name: '',
     email: '',
-    phone: '',
-    dietaryRestrictions: '',
-    preferences: ''
+    phone: ''
   });
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    fetchGuests();
+  }, []);
+
+  const fetchGuests = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/customers`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch guests');
+      }
+      const result = await response.json();
+      // Transform data if necessary, e.g., generating initials
+      const formattedGuests = result.data.map((guest: any) => ({
+        ...guest,
+        initials: guest.name
+          .split(' ')
+          .map((part: string) => part[0])
+          .join('')
+          .toUpperCase()
+          .substr(0, 2),
+      }));
+      setGuests(formattedGuests);
+    } catch (error) {
+      console.error('Error fetching guests:', error);
+      toast({
+        title: "Error fetching guests",
+        description: (error as Error).message || "Could not load guest data.",
+        variant: "destructive"
+      });
+      setGuests([]); // Set to empty array on error
+    }
+    setIsLoading(false);
+  };
   
   // Filter guests based on search term
   const filteredGuests = guests.filter(guest => 
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    guest.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (guest.email && guest.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
     guest.phone.includes(searchTerm)
   );
 
@@ -146,7 +118,7 @@ export default function Guests() {
     setSelectedGuest(null);
   };
 
-  const handleAddGuest = () => {
+  const handleAddGuest = async () => {
     if (!newGuest.name.trim() || !newGuest.email.trim()) {
       toast({
         title: "Error",
@@ -164,28 +136,42 @@ export default function Guests() {
       .toUpperCase()
       .substr(0, 2);
 
-    const newId = (guests.length + 1).toString();
-    
-    const guestToAdd: Guest = {
-      id: newId,
-      name: newGuest.name,
-      email: newGuest.email,
-      phone: newGuest.phone,
-      visitCount: 0,
-      lastVisit: new Date().toISOString().split('T')[0],
-      dietaryRestrictions: newGuest.dietaryRestrictions,
-      preferences: newGuest.preferences,
-      initials: initials
-    };
+    // POST to API
+    try {
+      const response = await fetch(`${API_BASE_URL}/customers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newGuest.name,
+          email: newGuest.email,
+          phone: newGuest.phone,
+          // dietaryRestrictions and preferences are not part of the core customer model in API yet
+        }),
+      });
 
-    setGuests([...guests, guestToAdd]);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add guest');
+      }
+      // const addedGuestData = await response.json(); // API returns the created guest
+      // Instead of manually adding, re-fetch to get the latest list with DB-generated ID
+      fetchGuests(); 
+    } catch (error) {
+      console.error('Error adding guest:', error);
+      toast({
+        title: "Error adding guest",
+        description: (error as Error).message || "Could not save new guest.",
+        variant: "destructive"
+      });
+      return; // Stop execution if API call fails
+    }
     setIsAddGuestOpen(false);
     setNewGuest({
       name: '',
       email: '',
-      phone: '',
-      dietaryRestrictions: '',
-      preferences: ''
+      phone: ''
     });
     
     toast({
@@ -214,23 +200,17 @@ export default function Guests() {
   };
 
   const handleExport = () => {
-    // Mock CSV export functionality
-    const headers = ['ID', 'Name', 'Email', 'Phone', 'Visit Count', 'Last Visit', 'Dietary Restrictions', 'Preferences'];
+    const headers = ['ID', 'Name', 'Email', 'Phone'];
     const csvContent = [
       headers.join(','),
       ...guests.map(guest => [
         guest.id,
         guest.name,
-        guest.email,
+        guest.email || '', 
         guest.phone,
-        guest.visitCount,
-        guest.lastVisit,
-        guest.dietaryRestrictions || '',
-        guest.preferences || ''
       ].join(','))
     ].join('\n');
     
-    // Create download link
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -257,9 +237,6 @@ export default function Guests() {
       return;
     }
 
-    // Mock CSV import functionality
-    // In a real app, this would parse the CSV file
-    
     toast({
       title: "Import successful",
       description: `${csvFile.name} has been imported successfully.`
@@ -267,13 +244,18 @@ export default function Guests() {
     
     setIsImportOpen(false);
     setCsvFile(null);
+    
+    toast({
+      title: "Import successful",
+      description: `${csvFile.name} has been imported successfully.`
+    });
   };
 
   return (
     <DashboardLayout>
-      <div className="animate-fade-in space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Guests</h1>
+      <div className="flex-1 p-6 space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-semibold">Guests ({isLoading ? 'Loading...' : filteredGuests.length})</h2>
           <div className="flex items-center gap-2">
             <Button 
               variant="outline" 
@@ -313,7 +295,7 @@ export default function Guests() {
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      CSV should have headers: Name, Email, Phone, Dietary Restrictions, Preferences
+                      CSV should have headers: Name, Email, Phone
                     </p>
                   </div>
                   
@@ -399,22 +381,6 @@ export default function Guests() {
                       onChange={(e) => setNewGuest({...newGuest, phone: e.target.value})}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="guest-dietary">Dietary Restrictions</Label>
-                    <Input 
-                      id="guest-dietary" 
-                      value={newGuest.dietaryRestrictions} 
-                      onChange={(e) => setNewGuest({...newGuest, dietaryRestrictions: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="guest-preferences">Seating Preferences</Label>
-                    <Textarea 
-                      id="guest-preferences" 
-                      value={newGuest.preferences} 
-                      onChange={(e) => setNewGuest({...newGuest, preferences: e.target.value})}
-                    />
-                  </div>
                   <div className="pt-4 flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setIsAddGuestOpen(false)}>Cancel</Button>
                     <Button onClick={handleAddGuest}>Add Guest</Button>
@@ -440,31 +406,32 @@ export default function Guests() {
             </div>
 
             <div className="rounded-md border">
-              <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 p-4 border-b font-medium">
-                <span></span>
+              <div className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 p-4 border-b font-medium">
+                <span></span> 
                 <span>Name</span>
                 <span className="hidden md:block">Email</span>
                 <span className="hidden md:block">Phone</span>
-                <span>Visits</span>
+                <span></span> 
               </div>
-              {filteredGuests.length > 0 ? (
+              {isLoading && <div className="p-4 text-center">Loading guests...</div>}
+              {!isLoading && filteredGuests.length > 0 ? (
                 filteredGuests.map((guest) => (
                   <div 
                     key={guest.id}
-                    className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 p-4 items-center hover:bg-muted cursor-pointer group"
+                    className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 p-4 items-center hover:bg-muted cursor-pointer group"
                     onClick={() => handleGuestSelect(guest)}
                   >
                     <Avatar className="h-10 w-10 bg-primary text-primary-foreground">
                       <AvatarFallback>{guest.initials}</AvatarFallback>
                     </Avatar>
                     <div className="font-medium">{guest.name}</div>
-                    <div className="hidden md:block text-muted-foreground">{guest.email}</div>
+                    <div className="hidden md:block text-muted-foreground">{guest.email || 'N/A'}</div>
                     <div className="hidden md:block text-muted-foreground">{guest.phone}</div>
-                    <div className="text-center">{guest.visitCount}</div>
+                    <div></div>
                   </div>
                 ))
               ) : (
-                <div className="p-4 text-center text-muted-foreground">No guests found</div>
+                !isLoading && <div className="p-4 text-center text-muted-foreground">No guests found</div>
               )}
             </div>
           </div>
@@ -485,16 +452,17 @@ export default function Guests() {
                 </Avatar>
                 <div>
                   <h2 className="text-2xl font-semibold">{selectedGuest.name}</h2>
-                  <p className="text-muted-foreground">
-                    Last visit on {new Date(selectedGuest.lastVisit).toLocaleDateString()} • {selectedGuest.visitCount} visits
-                  </p>
+                  {/* Removed last visit and visit count display */}
                 </div>
               </div>
-              
+              <div className="ml-auto flex items-center"> {/* Aligns edit button with the guest name/avatar block */}
+                <Button variant="outline" size="sm" onClick={() => setIsEditGuestOpen(true)}>Edit Guest</Button>
+              </div>
+            </div> {/* Closes: flex items-start justify-between */}
+
+            {/* Edit Guest Dialog (conditionally rendered) */}
+            {selectedGuest && (
               <Dialog open={isEditGuestOpen} onOpenChange={setIsEditGuestOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline">Edit Information</Button>
-                </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Edit Guest Information</DialogTitle>
@@ -505,7 +473,7 @@ export default function Guests() {
                       <Input 
                         id="edit-guest-name" 
                         value={selectedGuest.name} 
-                        onChange={(e) => setSelectedGuest({...selectedGuest, name: e.target.value})}
+                        onChange={(e) => setSelectedGuest(prev => prev ? {...prev, name: e.target.value} : null)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -513,8 +481,8 @@ export default function Guests() {
                       <Input 
                         id="edit-guest-email" 
                         type="email"
-                        value={selectedGuest.email} 
-                        onChange={(e) => setSelectedGuest({...selectedGuest, email: e.target.value})}
+                        value={selectedGuest.email || ''} 
+                        onChange={(e) => setSelectedGuest(prev => prev ? {...prev, email: e.target.value} : null)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -522,23 +490,7 @@ export default function Guests() {
                       <Input 
                         id="edit-guest-phone" 
                         value={selectedGuest.phone} 
-                        onChange={(e) => setSelectedGuest({...selectedGuest, phone: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-guest-dietary">Dietary Restrictions</Label>
-                      <Input 
-                        id="edit-guest-dietary" 
-                        value={selectedGuest.dietaryRestrictions || ''} 
-                        onChange={(e) => setSelectedGuest({...selectedGuest, dietaryRestrictions: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-guest-preferences">Seating Preferences</Label>
-                      <Textarea 
-                        id="edit-guest-preferences" 
-                        value={selectedGuest.preferences || ''} 
-                        onChange={(e) => setSelectedGuest({...selectedGuest, preferences: e.target.value})}
+                        onChange={(e) => setSelectedGuest(prev => prev ? {...prev, phone: e.target.value} : null)}
                       />
                     </div>
                     <div className="pt-4 flex justify-end gap-2">
@@ -548,97 +500,36 @@ export default function Guests() {
                   </div>
                 </DialogContent>
               </Dialog>
-            </div>
-            
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="info">Guest Information</TabsTrigger>
-                <TabsTrigger value="reservations">Reservations History</TabsTrigger>
+            )}
+
+            <Tabs defaultValue="info" className="w-full mt-6">
+              <TabsList>
+                <TabsTrigger value="info">Guest Info</TabsTrigger>
+                <TabsTrigger value="reservations">Reservations</TabsTrigger>
               </TabsList>
-              
-              <TabsContent value="info" className="space-y-6 mt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Email</h3>
-                      <p>{selectedGuest.email}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Phone</h3>
-                      <p>{selectedGuest.phone}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Dietary Restrictions</h3>
-                      <p>{selectedGuest.dietaryRestrictions || 'None'}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground">Seating Preferences</h3>
-                      <p>{selectedGuest.preferences || 'None'}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mt-6">
-                  <Button variant="outline" className="bg-white"
-                    onClick={() => setActiveTab('reservations')}
-                  >
-                    View Reservations
-                  </Button>
+              <TabsContent value="info" className="mt-4">
+                <div className="space-y-2 p-4 border rounded-md bg-card">
+                  <p><span className="font-semibold text-sm text-muted-foreground">Email:</span> {selectedGuest.email || 'N/A'}</p>
+                  <p><span className="font-semibold text-sm text-muted-foreground">Phone:</span> {selectedGuest.phone}</p>
+                  <p><span className="font-semibold text-sm text-muted-foreground">Joined:</span> {selectedGuest.created_at ? new Date(selectedGuest.created_at).toLocaleDateString() : 'N/A'}</p>
                 </div>
               </TabsContent>
-              
-              <TabsContent value="reservations" className="mt-6">
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 p-4 border-b font-medium">
-                    <span>Date & Time</span>
-                    <span>Party Size</span>
-                    <span>Table</span>
-                    <span>Status</span>
+              <TabsContent value="reservations" className="mt-4">
+                <div className="p-4 border rounded-md bg-card">
+                  <p className="text-muted-foreground">
+                    Reservation history for this guest will be shown here. (Feature under development)
+                  </p>
+                  <div className="mt-4">
+                    <Link to={selectedGuest ? `/reservations/new?guestId=${selectedGuest.id}&guestName=${encodeURIComponent(selectedGuest.name)}` : '#'}>
+                      <Button>
+                        Create New Reservation
+                      </Button>
+                    </Link>
                   </div>
-                  
-                  {reservationsData[selectedGuest.id]?.map((reservation) => (
-                    <div 
-                      key={reservation.id}
-                      className="grid grid-cols-[1fr_auto_auto_auto] gap-4 p-4 items-center hover:bg-muted cursor-pointer"
-                      onClick={() => window.location.href = `/reservations?id=${reservation.id}`}
-                    >
-                      <div>
-                        {new Date(reservation.date).toLocaleDateString()} at {reservation.time}
-                      </div>
-                      <div>{reservation.partySize} guests</div>
-                      <div>{reservation.tableNumber}</div>
-                      <div>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                          ${reservation.status === 'confirmed' ? 'bg-blue-100 text-blue-800' : 
-                            reservation.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            reservation.status === 'cancelled' ? 'bg-red-100 text-red-800' : 
-                            'bg-yellow-100 text-yellow-800'}`}
-                        >
-                          {reservation.status.charAt(0).toUpperCase() + reservation.status.slice(1)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {!reservationsData[selectedGuest.id]?.length && (
-                    <div className="p-4 text-center text-muted-foreground">
-                      No reservation history found
-                    </div>
-                  )}
-                </div>
-                
-                <div className="mt-6">
-                  <Link to={`/reservations?guest=${selectedGuest.id}`}>
-                    <Button>
-                      Create New Reservation
-                    </Button>
-                  </Link>
                 </div>
               </TabsContent>
             </Tabs>
-          </div>
+          {/* End of selectedGuest main container */}
         )}
       </div>
     </DashboardLayout>
