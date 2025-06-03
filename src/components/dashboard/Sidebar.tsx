@@ -91,7 +91,7 @@ export function Sidebar({ className }: SidebarProps) {
         {!collapsed ? (
           <div className="flex items-center">
             <img 
-              src="/xpressdine-logo.png" //  USER: Please replace with your actual logo path in /public 
+              src="/placeholder.svg" // Using available placeholder until logo is added
               alt="XpressDine Logo" 
               className="h-8 mr-2" 
             />
@@ -99,7 +99,7 @@ export function Sidebar({ className }: SidebarProps) {
         ) : (
           <div className="flex justify-center w-full">
             <img 
-              src="/xpressdine-logo.png" // USER: Please replace with your actual logo path in /public (ideally a smaller icon version if available for collapsed state) 
+              src="/placeholder.svg" // Using available placeholder until logo is added
               alt="XpressDine Logo Icon" 
               className="h-8" 
             />
