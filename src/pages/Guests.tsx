@@ -20,6 +20,7 @@ import {
   DialogTrigger 
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { ApiClient } from '../lib/ApiClient';
 
 interface Guest {
   id: string;
@@ -41,34 +42,6 @@ interface Reservation {
   billAmount?: number;
 }
 
-const API_BASE_URL = 'https://xpressdinemvp2.vercel.app/api';
-
-// Helper function to handle API requests with proper headers
-const fetchWithCors = async (url: string, options: RequestInit = {}) => {
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({
-      error: `HTTP error! status: ${response.status}`,
-    }));
-    throw new Error(errorData.error || 'An error occurred');
-  }
-
-  return response.json();
-};
-
 export default function Guests() {
   const { toast } = useToast();
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -88,9 +61,16 @@ export default function Guests() {
 
   // Fetch guests from API
   const fetchGuests = async () => {
+    console.log('[Guests.tsx] Starting to fetch guests...');
     setIsLoading(true);
     try {
-      const result = await fetchWithCors(`${API_BASE_URL}/customers`);
+      // Type assertion for the expected response structure from /api/customers GET
+      const result = await ApiClient.get<{ data: Guest[], error: any | null }>('/customers');
+      console.log('[Guests.tsx] Response data from ApiClient.get:', result);
+
+      if (result.error) {
+        throw new Error(result.error.message || result.error || 'Failed to fetch guests');
+      }
       
       const formattedGuests = result.data.map((guest: Guest) => ({
         ...guest,
@@ -102,6 +82,7 @@ export default function Guests() {
           .substring(0, 2),
       }));
       
+      console.log('[Guests.tsx] Formatted guests:', formattedGuests);
       setGuests(formattedGuests);
     } catch (error) {
       console.error('Failed to fetch guests:', error);
@@ -112,6 +93,7 @@ export default function Guests() {
       });
       setGuests([]);
     } finally {
+      console.log('Finished fetching guests');
       setIsLoading(false);
     }
   };
@@ -130,20 +112,25 @@ export default function Guests() {
     }
     
     try {
-      const result = await fetchWithCors(`${API_BASE_URL}/customers`, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newGuest.name,
-          email: newGuest.email || null,
-          phone: newGuest.phone,
-          initials: newGuest.name
-            .split(' ')
-            .map(part => part[0])
-            .join('')
-            .toUpperCase()
-            .substring(0, 2),
-        }),
-      });
+      console.log('[Guests.tsx] Attempting to add new guest:', newGuest);
+      const payload = {
+        name: newGuest.name,
+        email: newGuest.email || null, // Ensure email is null if empty, not an empty string
+        phone: newGuest.phone,
+      };
+      console.log('[Guests.tsx] Making POST request with payload:', payload);
+
+      // Type assertion for the expected response structure from /api/customers POST
+      const result = await ApiClient.post<{ data: Guest, error: any | null }>('/customers', payload);
+      console.log('[Guests.tsx] Response data from ApiClient.post:', result);
+
+      if (result.error) {
+        // The ApiClient might throw an error for non-ok status, 
+        // but if it doesn't and returns an error object (e.g. for 409 conflict)
+        throw new Error(result.error.message || result.error || 'Failed to add guest');
+      }
+      
+      console.log('[Guests.tsx] Successfully added guest:', result.data);
       
       // Refresh the guests list
       await fetchGuests();
@@ -172,13 +159,22 @@ export default function Guests() {
     e.preventDefault();
     if (!selectedGuest) return;
     
+    console.log('[Guests.tsx] Attempting to edit guest:', selectedGuest);
     try {
-      await fetchWithCors(`${API_BASE_URL}/customers/${selectedGuest.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(selectedGuest),
-      });
+      // Ensure we only send necessary data, backend might not expect 'initials'
+      const { initials, ...guestDataToUpdate } = selectedGuest;
+      const result = await ApiClient.put<{ data: Guest, error: any | null }>(
+        `/customers/${guestDataToUpdate.id}`,
+        guestDataToUpdate
+      );
+      console.log('[Guests.tsx] Response data from ApiClient.put:', result);
+
+      if (result.error) {
+        throw new Error(result.error.message || result.error || 'Failed to update guest');
+      }
       
-      await fetchGuests();
+      console.log('[Guests.tsx] Successfully updated guest:', result.data);
+      await fetchGuests(); // Refresh list
       setIsEditGuestOpen(false);
       
       toast({
@@ -200,22 +196,30 @@ export default function Guests() {
   const handleImport = async () => {
     if (!csvFile) return;
     
+    console.log('[Guests.tsx] Attempting to import guests from CSV:', csvFile.name);
     try {
       const formData = new FormData();
       formData.append('file', csvFile);
       
-      await fetchWithCors(`${API_BASE_URL}/customers/import`, {
-        method: 'POST',
-        body: formData,
-      });
+      // Assuming the import endpoint might return a summary or status
+      const result = await ApiClient.post<{ message?: string; success?: boolean; data?: any; error?: any | null }>(
+        '/customers/import',
+        formData
+      );
+      console.log('[Guests.tsx] Response data from ApiClient.post (import):', result);
+
+      if (result.error || (result.success === false)) {
+         throw new Error(result.error?.message || result.error || result.message || 'Failed to import guests');
+      }
       
-      await fetchGuests();
+      console.log('[Guests.tsx] Successfully imported guests.');
+      await fetchGuests(); // Refresh list
       setIsImportOpen(false);
       setCsvFile(null);
       
       toast({
         title: "Success",
-        description: "Guests imported successfully",
+        description: result.message || "Guests imported successfully",
       });
       
     } catch (error) {

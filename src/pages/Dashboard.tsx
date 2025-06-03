@@ -1,5 +1,4 @@
-
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Users, Calendar, Utensils, Plus, BarChartBig, PieChart } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
@@ -12,14 +11,78 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PieChart as RechartsPC, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 export default function Dashboard() {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
   const navigate = useNavigate();
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [revenueFilter, setRevenueFilter] = useState<'day' | 'week' | 'month'>('month');
-  const [dashboardStats] = useState({
-    totalReservations: { value: '73', description: 'This week', trend: { value: 5, positive: true } },
-    uniqueGuests: { value: '280', description: 'This month', trend: { value: 15, positive: false } },
-    averageOrderValue: { value: '$45.50', description: 'Per guest this month', trend: { value: 2.75, positive: true } },
-  });
+  const [liveActivityData, setLiveActivityData] = useState<ActivityChartDataPoint[] | null>(null);
+  const [isActivityLoading, setIsActivityLoading] = useState<boolean>(true);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<{
+    totalReservations: { value: string, description: string, trend?: { value: number, positive: boolean } },
+    uniqueGuests: { value: string, description: string, trend?: { value: number, positive: boolean } },
+    averageOrderValue: { value: string, description: string, trend?: { value: number, positive: boolean } },
+  } | null>(null);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  // Fetch dashboard overview metrics
+  useEffect(() => {
+    const fetchDashboardMetrics = async () => {
+      setIsStatsLoading(true);
+      setStatsError(null);
+      try {
+        console.log('Fetching dashboard metrics from:', `${API_BASE_URL}/api/metrics/overview`);
+        const response = await fetch(`${API_BASE_URL}/api/metrics/overview`);
+        
+        if (!response.ok) {
+          throw new Error(`API request failed with status ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Dashboard metrics response:', result);
+        
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        
+        // Map API response to component state format
+        if (result.data) {
+          setDashboardStats({
+            totalReservations: { 
+              value: result.data.totalReservations.toString(), 
+              description: 'All time', 
+              trend: { value: 5, positive: true } // Could be calculated in the future
+            },
+            uniqueGuests: { 
+              value: result.data.uniqueGuests.toString(), 
+              description: 'All time', 
+              trend: { value: 8, positive: true } // Could be calculated in the future
+            },
+            averageOrderValue: { 
+              value: '$' + (result.data.averagePartySize || 0).toFixed(2),  
+              description: 'Average party size', 
+              trend: { value: 2.5, positive: true } // Could be calculated in the future
+            },
+          });
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch dashboard metrics:', err);
+        setStatsError(err.message || 'Failed to load dashboard metrics');
+        
+        // Fallback to mock data on error
+        setDashboardStats({
+          totalReservations: { value: '0', description: 'No data available', trend: undefined },
+          uniqueGuests: { value: '0', description: 'No data available', trend: undefined },
+          averageOrderValue: { value: '$0.00', description: 'No data available', trend: undefined },
+        });
+      } finally {
+        setIsStatsLoading(false);
+      }
+    };
+
+    fetchDashboardMetrics();
+  }, [API_BASE_URL]);
 
   // Generate mock data that works for any month, including June
   const generateMockData = () => {
@@ -61,6 +124,64 @@ export default function Dashboard() {
   };
   
   const { dailyData: mockDailyData, weeklyData: mockWeeklyData, monthlyData: mockMonthlyData } = generateMockData();
+
+  useEffect(() => {
+    const fetchActivityData = async () => {
+      setIsActivityLoading(true);
+      setActivityError(null);
+      try {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const apiPeriod = mapFilterToApiPeriod(revenueFilter);
+        
+        // Update API endpoint to use metrics/reservations instead of analytics/activity
+        const endpoint = `${API_BASE_URL}/api/metrics/reservations?granularity=${revenueFilter}&startDate=${today}&endDate=${today}`;
+        console.log('Fetching activity data from:', endpoint);
+        
+        const response = await fetch(endpoint);
+        
+        if (!response.ok) {
+          let errorMessage = `HTTP error! status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch (jsonError) {
+            console.error('Error parsing error response:', jsonError);
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        console.log('Activity data response:', result);
+        
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        
+        if (result.data && Array.isArray(result.data)) {
+          // Map the API response to the expected format
+          const formattedData: ActivityChartDataPoint[] = result.data.map((item: any) => ({
+            name: item.label,
+            reservations: item.count,
+            revenue: item.count * 45 // Simple revenue estimate based on count
+          }));
+          
+          setLiveActivityData(formattedData);
+        } else {
+          console.warn('Unexpected response format from activity data API:', result);
+          setActivityError('Received unexpected data format from server');
+          setLiveActivityData(null);
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch activity data:', err);
+        setActivityError(err.message || 'Failed to load activity data');
+        setLiveActivityData(null); // Clear previous live data on error
+      } finally {
+        setIsActivityLoading(false);
+      }
+    };
+
+    fetchActivityData();
+  }, [revenueFilter, API_BASE_URL]);
   
   // Distribution data for pie chart
   const distributionData = [
@@ -70,16 +191,25 @@ export default function Dashboard() {
     { name: 'Other', value: 5, color: '#A855F7' },    // purple-500
   ];
 
-  const isLoading = false;
+  // Use the stats loading state for the cards
+  const isLoading = isStatsLoading;
   
   const handleCardClick = (destination: string) => {
     navigate(destination);
   };
 
-  const mapFilterToApiPeriod = (filter: 'day' | 'week' | 'month') => {
-    if (filter === 'day') return 'daily';
-    if (filter === 'week') return 'weekly';
-    return 'monthly'; // month
+  // Helper function to map UI filter values to API period parameters
+  const mapFilterToApiPeriod = (filter: 'day' | 'week' | 'month'): string => {
+    switch (filter) {
+      case 'day':
+        return 'hourly';
+      case 'week':
+        return 'daily';
+      case 'month':
+        return 'weekly';
+      default:
+        return 'daily';
+    }
   };
 
   const getChartTitle = (filter: 'day' | 'week' | 'month') => {
@@ -89,11 +219,16 @@ export default function Dashboard() {
   };
   
   // Select the appropriate data based on the filter
-  const activityGraphData = useMemo(() => {
+  const currentActivityData = useMemo(() => {
+    // Prioritize live data if successfully fetched
+    if (liveActivityData && !activityError) {
+      return liveActivityData;
+    }
+    // Fallback to mock data if live data is loading, failed, or not yet available
     if (revenueFilter === 'day') return mockDailyData;
     if (revenueFilter === 'week') return mockWeeklyData;
-    return mockMonthlyData; // month
-  }, [revenueFilter]);
+    return mockMonthlyData; // month for mock data
+  }, [liveActivityData, activityError, revenueFilter, mockDailyData, mockWeeklyData, mockMonthlyData]);
   
   // Function to format the date for the current month/year regardless of when viewed
   const formatCurrentDate = () => {
@@ -263,15 +398,23 @@ export default function Dashboard() {
               </TabsList>
               
               <TabsContent value="chart">
-                {isLoading || !activityGraphData ? (
+                {isActivityLoading ? (
                   <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                     Loading chart data...
                   </div>
-                ) : (
+                ) : activityError ? (
+                  <div className="h-[300px] flex items-center justify-center text-destructive">
+                    Error: {activityError}
+                  </div>
+                ) : currentActivityData && currentActivityData.length > 0 ? (
                   <ActivityChart 
                     title={getChartTitle(revenueFilter)} 
-                    data={activityGraphData} 
+                    data={currentActivityData} 
                   />
+                ) : (
+                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                    No activity data available for this period.
+                  </div>
                 )}
               </TabsContent>
               
