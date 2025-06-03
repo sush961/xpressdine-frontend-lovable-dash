@@ -75,11 +75,41 @@ export default function Guests() {
     fetchGuests();
   }, []);
 
+  // Helper function to get auth token from cookies or localStorage
+  const getAuthToken = () => {
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift();
+      return null;
+    };
+    return getCookie('sb-access-token') || getCookie('sb-refresh-token') || localStorage.getItem('sb-auth-token');
+  };
+
   const fetchGuests = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/customers`);
+      const authToken = getAuthToken();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/customers`, {
+        method: 'GET',
+        headers,
+        credentials: 'include', // Include cookies in the request
+      });
+      
       if (!response.ok) {
+        // If unauthorized, redirect to login
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
         throw new Error('Failed to fetch guests');
       }
       const result = await response.json();
@@ -142,16 +172,39 @@ export default function Guests() {
 
     // POST to API
     try {
+      // Get the auth token from cookies
+      const getCookie = (name: string) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop()?.split(';').shift();
+        return null;
+      };
+
+      const authToken = getCookie('sb-access-token') || getCookie('sb-refresh-token') || localStorage.getItem('sb-auth-token');
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add auth token to headers if it exists
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
+        credentials: 'include', // Include cookies in the request
         body: JSON.stringify({
           name: newGuest.name,
           email: newGuest.email,
           phone: newGuest.phone,
-          // dietaryRestrictions and preferences are not part of the core customer model in API yet
+          initials: newGuest.name
+            .split(' ')
+            .map(part => part[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2),
         }),
       });
 
