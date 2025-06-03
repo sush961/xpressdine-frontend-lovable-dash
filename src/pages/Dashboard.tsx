@@ -47,24 +47,35 @@ export default function Dashboard() {
         }
         
         // Map API response to component state format
-        if (result.data) {
+        if (result.data && typeof result.data === 'object') {
+          // Add defensive programming with null checks and defaults
+          const metrics = result.data;
+          const totalReservations = metrics.totalReservations != null ? metrics.totalReservations : 0;
+          const uniqueGuests = metrics.uniqueGuests != null ? metrics.uniqueGuests : 0;
+          const averagePartySize = metrics.averagePartySize != null ? metrics.averagePartySize : 0;
+          
+          console.log('Processed metrics values:', { totalReservations, uniqueGuests, averagePartySize });
+          
           setDashboardStats({
             totalReservations: { 
-              value: result.data.totalReservations.toString(), 
+              value: totalReservations.toString(), 
               description: 'All time', 
-              trend: { value: 5, positive: true } // Could be calculated in the future
+              trend: { value: 5, positive: true } 
             },
             uniqueGuests: { 
-              value: result.data.uniqueGuests.toString(), 
+              value: uniqueGuests.toString(), 
               description: 'All time', 
-              trend: { value: 8, positive: true } // Could be calculated in the future
+              trend: { value: 8, positive: true } 
             },
             averageOrderValue: { 
-              value: '$' + (result.data.averagePartySize || 0).toFixed(2),  
+              value: '$' + averagePartySize.toFixed(2),  
               description: 'Average party size', 
-              trend: { value: 2.5, positive: true } // Could be calculated in the future
+              trend: { value: 2.5, positive: true } 
             },
           });
+        } else {
+          console.error('Unexpected data format in metrics response:', result);
+          throw new Error('Received invalid data format from server');
         }
       } catch (err: any) {
         console.error('Failed to fetch dashboard metrics:', err);
@@ -130,11 +141,37 @@ export default function Dashboard() {
       setIsActivityLoading(true);
       setActivityError(null);
       try {
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const apiPeriod = mapFilterToApiPeriod(revenueFilter);
+        // Calculate appropriate date range based on the selected filter
+        const now = new Date();
+        let startDate = new Date(now);
+        const endDate = now;
         
-        // Update API endpoint to use metrics/reservations instead of analytics/activity
-        const endpoint = `${API_BASE_URL}/api/metrics/reservations?granularity=${revenueFilter}&startDate=${today}&endDate=${today}`;
+        // Adjust start date based on selected period
+        switch(revenueFilter) {
+          case 'day':
+            // For day view, just use today
+            break;
+          case 'week':
+            // For week view, go back 7 days
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case 'month':
+            // For month view, go back 30 days
+            startDate.setDate(now.getDate() - 30);
+            break;
+        }
+        
+        // Format dates as YYYY-MM-DD for API
+        const formattedStartDate = startDate.toISOString().split('T')[0];
+        const formattedEndDate = endDate.toISOString().split('T')[0];
+        
+        // Get the correct granularity value for the API
+        const validGranularity = mapFilterToApiPeriod(revenueFilter);
+        
+        console.log(`Date range for ${revenueFilter} view:`, { start: formattedStartDate, end: formattedEndDate });
+        
+        // Build the API endpoint URL with proper parameters
+        const endpoint = `${API_BASE_URL}/api/metrics/reservations?granularity=${validGranularity}&startDate=${formattedStartDate}&endDate=${formattedEndDate}`;
         console.log('Fetching activity data from:', endpoint);
         
         const response = await fetch(endpoint);
@@ -158,14 +195,32 @@ export default function Dashboard() {
         }
         
         if (result.data && Array.isArray(result.data)) {
-          // Map the API response to the expected format
-          const formattedData: ActivityChartDataPoint[] = result.data.map((item: any) => ({
-            name: item.label,
-            reservations: item.count,
-            revenue: item.count * 45 // Simple revenue estimate based on count
-          }));
-          
-          setLiveActivityData(formattedData);
+          try {
+            // Map the API response to the expected format with defensive programming
+            const formattedData: ActivityChartDataPoint[] = result.data.map((item: any) => {
+              // Ensure values exist with defaults
+              const label = (item && item.label) ? item.label : 'Unknown';
+              const count = (item && typeof item.count === 'number') ? item.count : 0;
+              
+              return {
+                name: label,
+                reservations: count,
+                revenue: count * 45 // Simple revenue estimate based on count
+              };
+            });
+            
+            console.log('Formatted activity data:', formattedData);
+            setLiveActivityData(formattedData);
+          } catch (formatError) {
+            console.error('Error formatting activity data:', formatError);
+            setActivityError('Error processing data format');
+            setLiveActivityData(null);
+          }
+        } else if (result.data && typeof result.data === 'object' && !Array.isArray(result.data)) {
+          // Handle case where data is an object but not an array
+          console.warn('API returned object instead of array for activity data:', result.data);
+          setActivityError('Received unexpected data format');
+          setLiveActivityData(null);
         } else {
           console.warn('Unexpected response format from activity data API:', result);
           setActivityError('Received unexpected data format from server');
@@ -199,17 +254,10 @@ export default function Dashboard() {
   };
 
   // Helper function to map UI filter values to API period parameters
+  // Backend expects exactly: 'day', 'week', 'month' as defined in VALID_GRANULARITIES
   const mapFilterToApiPeriod = (filter: 'day' | 'week' | 'month'): string => {
-    switch (filter) {
-      case 'day':
-        return 'hourly';
-      case 'week':
-        return 'daily';
-      case 'month':
-        return 'weekly';
-      default:
-        return 'daily';
-    }
+    // Just return the same value - backend expects these exact values
+    return filter;
   };
 
   const getChartTitle = (filter: 'day' | 'week' | 'month') => {

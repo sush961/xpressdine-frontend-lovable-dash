@@ -1,4 +1,8 @@
-const API_BASE_URL = 'https://xpressdinemvp2.vercel.app/api';
+// Import the environment variable for the API base URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xpressdinemvp2.vercel.app';
+
+// Make sure API_BASE_URL doesn't end with a slash, but we'll add one in the request function
+const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
 
 interface RequestOptions extends RequestInit {
   // You can add any custom options here if needed in the future
@@ -10,7 +14,14 @@ const defaultHeaders = {
 };
 
 async function request<T>(endpoint: string, options: RequestOptions = {}, body?: any): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Ensure endpoint starts with '/api/' if not already
+  const apiPath = endpoint.startsWith('/api/') ? endpoint : endpoint.startsWith('/') ? `/api${endpoint}` : `/api/${endpoint}`;
+  const url = `${baseUrl}${apiPath}`;
+  
+  console.log(`[ApiClient] Constructed URL: ${url}`);
+  
+  // Set redirect mode to manual to prevent redirect loops
+  const redirectMode: RequestRedirect = options.redirect || 'follow';
 
   let requestBody = body;
   const headers: HeadersInit = {
@@ -33,6 +44,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}, body?:
     headers,
     body: requestBody,
     credentials: 'include', // Crucial for sending cookies
+    redirect: redirectMode, // Use our redirect setting
   };
 
   console.log(`[ApiClient] Making ${options.method || 'GET'} request to ${url} with options:`, config);
