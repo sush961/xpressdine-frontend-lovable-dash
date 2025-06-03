@@ -47,7 +47,7 @@ interface Reservation {
 
 // Mock data (reservationsData) removed.
 
-const API_BASE_URL = ''; // Use relative path for Next.js API routes
+const API_BASE_URL = 'https://xpressdinemvp2.vercel.app'; // Production backend API
 
 export default function Guests() {
   // Helper to generate reservation URL for a guest
@@ -78,7 +78,7 @@ export default function Guests() {
   const fetchGuests = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/customers`);
+      const response = await fetch(`${API_BASE_URL}/api/customers`);
       if (!response.ok) {
         throw new Error('Failed to fetch guests');
       }
@@ -142,7 +142,7 @@ export default function Guests() {
 
     // POST to API
     try {
-      const response = await fetch(`/api/customers`, {
+      const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
