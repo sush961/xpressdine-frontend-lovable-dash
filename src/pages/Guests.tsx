@@ -89,28 +89,19 @@ export default function Guests() {
   const fetchGuests = async () => {
     setIsLoading(true);
     try {
-      const authToken = getAuthToken();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
       const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'GET',
-        headers,
-        credentials: 'include', // Include cookies in the request
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors',
+        credentials: 'include',
       });
       
       if (!response.ok) {
-        // If unauthorized, redirect to login
-        if (response.status === 401) {
-          window.location.href = '/login';
-          return;
-        }
-        throw new Error('Failed to fetch guests');
+        const errorText = await response.text();
+        console.error('Failed to fetch guests:', response.status, errorText);
+        throw new Error(`Failed to fetch guests: ${response.status} ${errorText}`);
       }
       const result = await response.json();
       // Transform data if necessary, e.g., generating initials
@@ -172,29 +163,13 @@ export default function Guests() {
 
     // POST to API
     try {
-      // Get the auth token from cookies
-      const getCookie = (name: string) => {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop()?.split(';').shift();
-        return null;
-      };
-
-      const authToken = getCookie('sb-access-token') || getCookie('sb-refresh-token') || localStorage.getItem('sb-auth-token');
-      
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      };
-      
-      // Add auth token to headers if it exists
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
       const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
-        headers,
-        credentials: 'include', // Include cookies in the request
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors',
+        credentials: 'include',
         body: JSON.stringify({
           name: newGuest.name,
           email: newGuest.email,
