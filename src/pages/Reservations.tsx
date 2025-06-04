@@ -270,16 +270,21 @@ export default function Reservations() {
     setIsGuestSearchLoading(true);
     setGuestSearchError(null);
     try {
-      const response = await fetch(`/api/customers?search=${encodeURIComponent(searchTerm)}`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to fetch guests: ${response.statusText}`);
-      }
-      const data = await response.json();
-      setGuestSearchResults(data.data || []);
-    } catch (error) {
+      const path = `/api/customers?search=${encodeURIComponent(searchTerm)}`;
+      // Assuming ApiClient.get returns an object with a 'data' property which is an array of CustomerSearchResult
+      const responseData = await ApiClient.get<{ data: CustomerSearchResult[] }>(path);
+      setGuestSearchResults(responseData.data || []);
+    } catch (error: unknown) {
       console.error('Error fetching guest suggestions:', error);
-      setGuestSearchError(error instanceof Error ? error.message : 'An unknown error occurred');
+      let message = 'An unknown error occurred while fetching guest suggestions.';
+      if (error instanceof Error) {
+        message = error.message;
+      } else if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: string }).message === 'string') {
+        message = (error as { message: string }).message;
+      } else if (typeof error === 'string') {
+        message = error;
+      }
+      setGuestSearchError(message);
       setGuestSearchResults([]);
     }
     setIsGuestSearchLoading(false);
