@@ -138,6 +138,15 @@ export default function Reservations() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
   const [isAddReservationOpen, setIsAddReservationOpen] = useState(false);
   const [isEditReservationOpen, setIsEditReservationOpen] = useState(false);
+  const [currentReservationForBill, setCurrentReservationForBill] = useState<Reservation | null>(null);
+  const [currentBillAmount, setCurrentBillAmount] = useState<string>('');
+  const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [isTablesLoading, setIsTablesLoading] = useState(false);
+  const [tablesError, setTablesError] = useState<string | null>(null);
+
+
   // Fetch reservations from API
   const fetchReservations = useCallback(async () => {
     console.log('[Reservations.tsx] Starting to fetch reservations...');
@@ -752,15 +761,15 @@ export default function Reservations() {
                 <Button size="sm" className="flex items-center gap-1">
                   <Plus className="h-4 w-4" />
                   <span className="hidden sm:inline">New Reservation</span>
-                </Button>
-              </DialogTrigger>
+                </button>
+              </div>
               <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Create New Reservation</DialogTitle>
-                </DialogHeader>
+                <div>
+                  <h2>Create New Reservation</h2>
+                </div>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2 relative">
-                    <Label htmlFor="reservation-guest-search">Guest</Label>
+                    <Label htmlFor="reservation-guest-search">Guest</label>
                     <Input 
                       id="reservation-guest-search" 
                       placeholder="Search guest by name, email, or phone..." 
@@ -815,7 +824,7 @@ export default function Reservations() {
                           <p className="text-xs text-muted-foreground">No guests found matching "{guestSearchTerm}".</p>
                           <Button variant="link" size="sm" className="text-primary h-auto p-0 text-xs" onClick={() => setIsCreateGuestDialogOpen(true)}>
                             Create New Guest
-                          </Button>
+                          </button>
                         </div>
                     )}
                     {guestSearchTerm.length === 0 && guestSearchResults.length === 0 && (
@@ -825,8 +834,8 @@ export default function Reservations() {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Date</Label>
-                      <Popover>
+                      <label>Date</label>
+                      <div>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
@@ -834,8 +843,8 @@ export default function Reservations() {
                           >
                             <Calendar className="mr-2 h-4 w-4" />
                             {format(newReservation.date, "PPP")}
-                          </Button>
-                        </PopoverTrigger>
+                          </button>
+                        </div>
                         <PopoverContent className="w-auto p-0" align="start">
                           <CalendarComponent
                             mode="single"
@@ -844,12 +853,12 @@ export default function Reservations() {
                             initialFocus
                             className="p-3 pointer-events-auto"
                           />
-                        </PopoverContent>
-                      </Popover>
+                        </div>
+                      </div>
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="reservation-time">Time</Label>
+                      <Label htmlFor="reservation-time">Time</label>
                       <Input 
                         id="reservation-time" 
                         type="time" 
@@ -861,7 +870,7 @@ export default function Reservations() {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="reservation-party">Party Size</Label>
+                      <Label htmlFor="reservation-party">Party Size</label>
                       <Input 
                         id="reservation-party" 
                         type="number" 
@@ -872,7 +881,7 @@ export default function Reservations() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="reservation-table">Table</Label>
+                      <Label htmlFor="reservation-table">Table</label>
                       {isTablesLoading ? (
                         <div className="flex h-10 items-center text-sm text-muted-foreground">
                           Loading tables...
@@ -899,7 +908,7 @@ export default function Reservations() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="reservation-requests">Special Requests</Label>
+                    <Label htmlFor="reservation-requests">Special Requests</label>
                     <Input 
                       id="reservation-requests" 
                       placeholder="Any special requests..." 
@@ -908,29 +917,29 @@ export default function Reservations() {
                     />
                   </div>
                 </div>
-                <DialogFooter>
+                <div>
                   <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
                   <Button onClick={handleAddReservation}>Create Reservation</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                </div>
+              </div>
+            </div>
           </div> {/* Closes action buttons div (from line 739) */}
         </div> {/* Closes header row div (from line 737) */}
 
             {/* Create New Guest Dialog */}
             <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
               <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Create New Guest</DialogTitle>
+                <div>
+                  <h2>Create New Guest</h2>
                   <DialogDescription>
                     Add a new guest to the system. This guest will then be selected for the current reservation.
                   </DialogDescription>
-                </DialogHeader>
+                </div>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="guest-name" className="text-right">
                       Name
-                    </Label>
+                    </label>
                     <Input 
                       id="guest-name" 
                       value={newGuestDetails.name} 
@@ -942,7 +951,7 @@ export default function Reservations() {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="guest-email" className="text-right">
                       Email
-                    </Label>
+                    </label>
                     <Input 
                       id="guest-email" 
                       type="email"
@@ -955,7 +964,7 @@ export default function Reservations() {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="guest-phone" className="text-right">
                       Phone
-                    </Label>
+                    </label>
                     <Input 
                       id="guest-phone" 
                       value={newGuestDetails.phone} 
@@ -968,7 +977,7 @@ export default function Reservations() {
                     <p className="text-sm text-destructive col-span-4 text-center">{createGuestError}</p>
                   )}
                 </div>
-                <DialogFooter>
+                <div>
                   <Button variant="outline" onClick={() => {
                     setIsCreateGuestDialogOpen(false);
                     setNewGuestDetails({ name: '', email: '', phone: '' });
@@ -976,16 +985,16 @@ export default function Reservations() {
                   }}>Cancel</Button>
                   <Button onClick={handleCreateGuest} disabled={isCreatingGuest}>
                     {isCreatingGuest ? 'Creating...' : 'Create Guest'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  </button>
+                </div>
+              </div>
+            </div>
         </div>
 
         {!selectedReservation ? (
           <>
             <div className="flex flex-wrap items-center gap-4 mb-6">
-              <Popover>
+              <div>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -993,8 +1002,8 @@ export default function Reservations() {
                   >
                     <Calendar className="mr-2 h-4 w-4" />
                     {getDateFilterLabel()}
-                  </Button>
-                </PopoverTrigger>
+                  </button>
+                </div>
                 <PopoverContent className="w-auto" align="start">
                   <div className="grid gap-4">
                     <div className="space-y-2">
@@ -1006,28 +1015,28 @@ export default function Reservations() {
                           onClick={() => setDateFilter('today')}
                         >
                           Today
-                        </Button>
+                        </button>
                         <Button 
                           variant={dateFilter === 'week' ? "default" : "outline"} 
                           className="w-full"
                           onClick={() => setDateFilter('week')}
                         >
                           This Week
-                        </Button>
+                        </button>
                         <Button 
                           variant={dateFilter === 'month' ? "default" : "outline"} 
                           className="w-full"
                           onClick={() => setDateFilter('month')}
                         >
                           This Month
-                        </Button>
+                        </button>
                         <Button 
                           variant={dateFilter === 'custom' ? "default" : "outline"} 
                           className="w-full"
                           onClick={() => setDateFilter('custom')}
                         >
                           Custom
-                        </Button>
+                        </button>
                       </div>
                     </div>
                     
@@ -1054,16 +1063,16 @@ export default function Reservations() {
                       </div>
                     )}
                   </div>
-                </PopoverContent>
-              </Popover>
+                </div>
+              </div>
 
-              <Popover>
+              <div>
                 <PopoverTrigger asChild>
                   <Button variant="outline">
                     <Filter className="mr-2 h-4 w-4" />
                     {statusFilter ? `Status: ${statusFilter}` : 'Filter by status'}
-                  </Button>
-                </PopoverTrigger>
+                  </button>
+                </div>
                 <PopoverContent className="w-[200px] p-0">
                   <div className="p-2 space-y-1">
                     <Button 
@@ -1072,38 +1081,38 @@ export default function Reservations() {
                       onClick={() => setStatusFilter(null)}
                     >
                       All statuses
-                    </Button>
+                    </button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('confirmed')}
                     >
                       Confirmed
-                    </Button>
+                    </button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('pending')}
                     >
                       Pending
-                    </Button>
+                    </button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('cancelled')}
                     >
                       Cancelled
-                    </Button>
+                    </button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('completed')}
                     >
                       Completed
-                    </Button>
+                    </button>
                   </div>
-                </PopoverContent>
-              </Popover>
+                </div>
+              </div>
 
               {guestIdFromQuery && (
                 <div className="flex items-center gap-2 ml-2">
@@ -1115,7 +1124,7 @@ export default function Reservations() {
                     onClick={() => window.location.href = '/reservations'}
                   >
                     Clear filter
-                  </Button>
+                  </button>
                 </div>
               )}
             </div>
@@ -1177,7 +1186,7 @@ export default function Reservations() {
               className="mb-2"
             >
               ← Back to list
-            </Button>
+            </button>
             
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4">
@@ -1237,28 +1246,28 @@ export default function Reservations() {
                     onClick={() => handleStatusChange('pending')}
                   >
                     Set Pending
-                  </Button>
+                  </button>
                   <Button
                     size="sm"
                     variant={selectedReservation.status === 'confirmed' ? 'default' : 'outline'}
                     onClick={() => handleStatusChange('confirmed')}
                   >
                     Confirm
-                  </Button>
+                  </button>
                   <Button
                     size="sm"
                     variant={selectedReservation.status === 'completed' ? 'default' : 'outline'}
                     onClick={() => handleStatusChange('completed')}
                   >
                     Complete
-                  </Button>
+                  </button>
                   <Button
                     size="sm"
                     variant={selectedReservation.status === 'cancelled' ? 'destructive' : 'outline'}
                     onClick={() => handleStatusChange('cancelled')}
                   >
                     Cancel
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1309,16 +1318,16 @@ export default function Reservations() {
               <Dialog open={isEditReservationOpen} onOpenChange={setIsEditReservationOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline">Edit Reservation</Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Edit Reservation</DialogTitle>
-                  </DialogHeader>
+                </div>
+                <div>
+                  <div>
+                    <h2>Edit Reservation</h2>
+                  </div>
                   <div className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Date</Label>
-                        <Popover>
+                        <label>Date</label>
+                        <div>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
@@ -1327,7 +1336,7 @@ export default function Reservations() {
                               <Calendar className="mr-2 h-4 w-4" />
                               {format(selectedReservation.date, "PPP")}
                             </Button>
-                          </PopoverTrigger>
+                          </div>
                           <PopoverContent className="w-auto p-0" align="start">
                             <CalendarComponent
                               mode="single"
@@ -1336,12 +1345,12 @@ export default function Reservations() {
                               initialFocus
                               className="p-3 pointer-events-auto"
                             />
-                          </PopoverContent>
-                        </Popover>
+                          </div>
+                        </div>
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="edit-reservation-time">Time</Label>
+                        <Label htmlFor="edit-reservation-time">Time</label>
                         <Input 
                           id="edit-reservation-time" 
                           type="time" 
@@ -1353,7 +1362,7 @@ export default function Reservations() {
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="edit-reservation-party">Party Size</Label>
+                        <Label htmlFor="edit-reservation-party">Party Size</label>
                         <Input 
                           id="edit-reservation-party" 
                           type="number" 
@@ -1367,7 +1376,7 @@ export default function Reservations() {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="edit-reservation-table">Table</Label>
+                        <Label htmlFor="edit-reservation-table">Table</label>
                         {isTablesLoading ? (
                           <div className="flex h-10 items-center text-sm text-muted-foreground">
                             Loading tables...
@@ -1401,7 +1410,7 @@ export default function Reservations() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="edit-reservation-requests">Special Requests</Label>
+                      <Label htmlFor="edit-reservation-requests">Special Requests</label>
                       <Input 
                         id="edit-reservation-requests" 
                         value={selectedReservation.specialRequests || ''}
@@ -1409,12 +1418,12 @@ export default function Reservations() {
                       />
                     </div>
                   </div>
-                  <DialogFooter>
+                  <div>
                     <Button variant="outline" onClick={() => setIsEditReservationOpen(false)}>Cancel</Button>
                     <Button onClick={handleEditReservation}>Save Changes</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  </div>
+                </div>
+              </div>
               <Link to={`/guests?id=${selectedReservation.guestId}`}>
                 <Button variant="outline" className="bg-white">
                   View Guest Profile
@@ -1442,12 +1451,12 @@ export default function Reservations() {
         {/* Bill Amount Dialog */}
         <Dialog open={billAmountDialogOpen} onOpenChange={setBillAmountDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Enter Bill Amount</DialogTitle>
-            </DialogHeader>
+            <div>
+              <h2>Enter Bill Amount</h2>
+            </div>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="bill-amount">Bill Amount ($)</Label>
+                <Label htmlFor="bill-amount">Bill Amount ($)</label>
                 <Input 
                   id="bill-amount" 
                   type="number"
@@ -1462,28 +1471,26 @@ export default function Reservations() {
                 </p>
               </div>
             </div>
-            <DialogFooter>
+            <div>
               <Button variant="outline" onClick={() => setBillAmountDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleBillConfirm}>Save</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        
+            </div>
+          </div>
         </div>
-)}
-{/* Export Dialog */}
+
+        {/* Export Dialog */}
         <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Export Reservations</DialogTitle>
-            </DialogHeader>
+            <div>
+              <h2>Export Reservations</h2>
+            </div>
             <div className="space-y-4 py-4">
               <h4 className="text-sm font-medium">Select fields to export</h4>
               <div className="grid grid-cols-2 gap-2">
                 {['Guest Name', 'Date', 'Time', 'Party Size', 'Table', 'Status', 'Bill Amount'].map((field) => (
                   <div key={field} className="flex items-center space-x-2">
                     <input type="checkbox" id={`export-${field}`} defaultChecked className="rounded border-gray-300" />
-                    <Label htmlFor={`export-${field}`} className="text-sm">{field}</Label>
+                    <Label htmlFor={`export-${field}`} className="text-sm">{field}</label>
                   </div>
                 ))}
               </div>
@@ -1494,12 +1501,12 @@ export default function Reservations() {
                 <Button variant="outline" className="flex-1">All Dates</Button>
               </div>
             </div>
-            <DialogFooter>
+            <div>
               <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleExport}>Export CSV</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );
