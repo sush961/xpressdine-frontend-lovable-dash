@@ -1,5 +1,5 @@
 // Import the environment variable for the API base URL
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xpressdinemvp2.vercel.app';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xpressdine-backend.vercel.app';
 
 // Make sure API_BASE_URL doesn't end with a slash, but we'll add one in the request function
 const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
@@ -47,7 +47,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}, body?:
     redirect: redirectMode, // Use our redirect setting
   };
 
-  console.log(`[ApiClient] Making ${options.method || 'GET'} request to ${url} with options:`, config);
+  console.log(`[ApiClient] Making ${options.method || 'GET'} request to ${url} with headers:`, config.headers, `and body (type): ${typeof config.body}`);
 
   try {
     const response = await fetch(url, config);
