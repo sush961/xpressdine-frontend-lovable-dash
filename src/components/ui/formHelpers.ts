@@ -17,8 +17,9 @@ export const FormField = <
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>
 >({ ...props }: ControllerProps<TFieldValues, TName>) => {
+  const providerValue = { name: props.name };
   return (
-    <FormFieldContext.Provider value={{ name: props.name }}>
+    <FormFieldContext.Provider value={providerValue}>
       <Controller {...props} />
     </FormFieldContext.Provider>
   );

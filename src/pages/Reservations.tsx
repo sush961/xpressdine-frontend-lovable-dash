@@ -4,22 +4,22 @@ import { Link, useLocation } from 'react-router-dom';
 import { Calendar, Filter, FileText, Plus, Users, DollarSign } from 'lucide-react';
 import { ApiClient } from '../lib/ApiClient'; // Added ApiClient import
 
-// Table ID to name mapping
-const TABLE_NAMES: Record<string, string> = {
-  // Add more mappings as needed
-  'table-1': 'T1',
-  'table-2': 'T2',
-  'table-3': 'T3',
-  'table-4': 'T4',
-  'table-5': 'T5',
-  'table-6': 'T6',
-  'table-7': 'T7',
-  'table-8': 'T8',
-};
+// Interface for table data from the API
+interface Table {
+  id: string;
+  number: number;
+  name: string;
+  capacity: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
 
-// Helper function to get table name from ID
-const getTableName = (tableId: string): string => {
-  return TABLE_NAMES[tableId] || tableId; // Return the ID if no mapping exists
+// Helper function to format table name from table data
+const getTableName = (table: Table | string | undefined): string => {
+  if (!table) return 'TBD';
+  if (typeof table === 'string') return table; // Fallback if we only have an ID
+  return table.name || `T${table.number}`;
 };
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
@@ -186,11 +186,32 @@ export default function Reservations() {
     }
   }, [toast]);
 
-  // Fetch reservations when component mounts
+  // Function to fetch tables
+  const fetchTables = useCallback(async () => {
+    setIsTablesLoading(true);
+    setTablesError(null);
+    try {
+      const response = await fetch('https://xpressdine-backend.vercel.app/api/tables');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setTables(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching tables:', error);
+      setTablesError('Failed to load tables. Please try again later.');
+      setTables([]);
+    } finally {
+      setIsTablesLoading(false);
+    }
+  }, []);
+
+  // Fetch reservations and tables when component mounts
   useEffect(() => {
-    console.log('[Reservations.tsx] Component mounted, fetching reservations...');
+    console.log('[Reservations.tsx] Component mounted, fetching reservations and tables...');
     fetchReservations();
-  }, [fetchReservations]);
+    fetchTables();
+  }, [fetchReservations, fetchTables]);
 
   const [newReservation, setNewReservation] = useState({
     guestId: guestIdFromQuery || '',
@@ -199,7 +220,7 @@ export default function Reservations() {
     date: new Date(),
     time: '19:00',
     partySize: 2,
-    tableNumber: '',
+    tableId: '', // Changed from tableNumber to tableId for consistency
     specialRequests: ''
   });
   const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
@@ -209,6 +230,11 @@ export default function Reservations() {
   const [guestSearchResults, setGuestSearchResults] = useState<CustomerSearchResult[]>([]);
   const [isGuestSearchLoading, setIsGuestSearchLoading] = useState(false);
   const [guestSearchError, setGuestSearchError] = useState<string | null>(null);
+  
+  // State for tables
+  const [tables, setTables] = useState<Table[]>([]);
+  const [isTablesLoading, setIsTablesLoading] = useState(true);
+  const [tablesError, setTablesError] = useState<string | null>(null);
   const [isCreateGuestDialogOpen, setIsCreateGuestDialogOpen] = useState(false);
   const [newGuestDetails, setNewGuestDetails] = useState({ name: '', email: '', phone: '' });
   const [isCreatingGuest, setIsCreatingGuest] = useState(false);
@@ -451,7 +477,7 @@ export default function Reservations() {
       date: format(newReservation.date, 'yyyy-MM-dd'), // Format date for API
       time: newReservation.time,
       partySize: newReservation.partySize,
-      tableNumber: newReservation.tableNumber,
+      tableId: newReservation.tableId, // Changed from tableNumber to tableId
       specialRequests: newReservation.specialRequests,
     };
 
@@ -521,11 +547,11 @@ export default function Reservations() {
     setNewReservation({
       guestId: '',
       guestName: '',
-      guestEmail: '', // Added to fix lint error
+      guestEmail: '',
       date: new Date(),
       time: '19:00',
       partySize: 2,
-      tableNumber: '',
+      tableId: '',
       specialRequests: ''
     });
     setGuestSearchTerm('');
@@ -847,12 +873,28 @@ export default function Reservations() {
                     
                     <div className="space-y-2">
                       <Label htmlFor="reservation-table">Table</Label>
-                      <Input 
-                        id="reservation-table" 
-                        placeholder="e.g. T01" 
-                        value={newReservation.tableNumber}
-                        onChange={(e) => setNewReservation({...newReservation, tableNumber: e.target.value})}
-                      />
+                      {isTablesLoading ? (
+                        <div className="flex h-10 items-center text-sm text-muted-foreground">
+                          Loading tables...
+                        </div>
+                      ) : tablesError ? (
+                        <div className="text-sm text-destructive">{tablesError}</div>
+                      ) : (
+                        <select
+                          id="reservation-table"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={newReservation.tableId || ''}
+                          onChange={(e) => setNewReservation({...newReservation, tableId: e.target.value})}
+                          required
+                        >
+                          <option value="">Select a table</option>
+                          {tables.map((table) => (
+                            <option key={table.id} value={table.id}>
+                              {getTableName(table)} (Seats: {table.capacity})
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
                   
@@ -872,6 +914,8 @@ export default function Reservations() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+          </div> {/* Closes action buttons div (from line 739) */}
+        </div> {/* Closes header row div (from line 737) */}
 
             {/* Create New Guest Dialog */}
             <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
@@ -936,7 +980,6 @@ export default function Reservations() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div>
         </div>
 
         {!selectedReservation ? (
@@ -1099,7 +1142,7 @@ export default function Reservations() {
                       <div>
                         <div className="font-medium">{reservation.guestName}</div>
                         <div className="text-muted-foreground">
-                          {format(reservation.date, "MMM d, yyyy")} at {reservation.time}
+                          {format(new Date(reservation.date), "MMM d, yyyy")} at {reservation.time}
                         </div>
                       </div>
                     </div>
@@ -1107,7 +1150,11 @@ export default function Reservations() {
                       <Users className="mr-1 h-4 w-4 text-muted-foreground" />
                       {reservation.partySize}
                     </div>
-                    <div>{getTableName(reservation.tableId)}</div>
+                    <div>
+                      {tables.find(t => t.id === reservation.tableId) ? 
+                        getTableName(tables.find(t => t.id === reservation.tableId)) : 
+                        getTableName(reservation.tableId)}
+                    </div>
                     <div>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${getStatusBadgeClass(reservation.status)}`}>
                         {reservation.status.charAt(0).toUpperCase() + reservation.status.slice(1)}
@@ -1240,7 +1287,16 @@ export default function Reservations() {
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Table</h3>
-                  <p>{getTableName(selectedReservation.tableId)}</p>
+                  <p>
+                    {tables.find(t => t.id === selectedReservation.tableId) ? (
+                      <>
+                        {getTableName(tables.find(t => t.id === selectedReservation.tableId))} 
+                        (Seats: {tables.find(t => t.id === selectedReservation.tableId)?.capacity})
+                      </>
+                    ) : (
+                      getTableName(selectedReservation.tableId) // Fallback if table not found in state
+                    )}
+                  </p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Special Requests</h3>
@@ -1312,17 +1368,35 @@ export default function Reservations() {
                       
                       <div className="space-y-2">
                         <Label htmlFor="edit-reservation-table">Table</Label>
-                        <select
-                          id="edit-reservation-table"
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          value={selectedReservation.tableId}
-                          onChange={(e) => setSelectedReservation({...selectedReservation, tableId: e.target.value})}
-                        >
-                          <option value="">Select a table</option>
-                          {Object.entries(TABLE_NAMES).map(([id, name]) => (
-                            <option key={id} value={id}>{name}</option>
-                          ))}
-                        </select>
+                        {isTablesLoading ? (
+                          <div className="flex h-10 items-center text-sm text-muted-foreground">
+                            Loading tables...
+                          </div>
+                        ) : tablesError ? (
+                          <div className="text-sm text-destructive">{tablesError}</div>
+                        ) : (
+                          <select
+                            id="edit-table"
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            value={selectedReservation?.tableId || ''}
+                            onChange={(e) => {
+                              if (selectedReservation) {
+                                setSelectedReservation({
+                                  ...selectedReservation,
+                                  tableId: e.target.value
+                                });
+                              }
+                            }}
+                            required
+                          >
+                            <option value="">Select a table</option>
+                            {tables.map((table) => (
+                              <option key={table.id} value={table.id}>
+                                {getTableName(table)} (Seats: {table.capacity})
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     </div>
                     
@@ -1346,6 +1420,21 @@ export default function Reservations() {
                   View Guest Profile
                 </Button>
               </Link>
+              {selectedReservation.status === 'confirmed' && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex items-center gap-1"
+                  onClick={() => {
+                    setCurrentReservationForBill(selectedReservation);
+                    setCurrentBillAmount(selectedReservation.billAmount?.toString() || ''); 
+                    setBillAmountDialogOpen(true);
+                  }}
+                >
+                  <DollarSign className="h-4 w-4" />
+                  Set Bill Amount
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -1380,7 +1469,9 @@ export default function Reservations() {
           </DialogContent>
         </Dialog>
         
-        {/* Export Dialog */}
+        </div>
+)}
+{/* Export Dialog */}
         <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
