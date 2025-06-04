@@ -3,6 +3,24 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Calendar, Filter, FileText, Plus, Users, DollarSign } from 'lucide-react';
 import { ApiClient } from '../lib/ApiClient'; // Added ApiClient import
+
+// Table ID to name mapping
+const TABLE_NAMES: Record<string, string> = {
+  // Add more mappings as needed
+  'table-1': 'T1',
+  'table-2': 'T2',
+  'table-3': 'T3',
+  'table-4': 'T4',
+  'table-5': 'T5',
+  'table-6': 'T6',
+  'table-7': 'T7',
+  'table-8': 'T8',
+};
+
+// Helper function to get table name from ID
+const getTableName = (tableId: string): string => {
+  return TABLE_NAMES[tableId] || tableId; // Return the ID if no mapping exists
+};
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -1089,7 +1107,7 @@ export default function Reservations() {
                       <Users className="mr-1 h-4 w-4 text-muted-foreground" />
                       {reservation.partySize}
                     </div>
-                    <div>{reservation.tableId}</div>
+                    <div>{getTableName(reservation.tableId)}</div>
                     <div>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${getStatusBadgeClass(reservation.status)}`}>
                         {reservation.status.charAt(0).toUpperCase() + reservation.status.slice(1)}
@@ -1222,7 +1240,7 @@ export default function Reservations() {
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Table</h3>
-                  <p>{selectedReservation.tableId}</p>
+                  <p>{getTableName(selectedReservation.tableId)}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Special Requests</h3>
@@ -1294,11 +1312,17 @@ export default function Reservations() {
                       
                       <div className="space-y-2">
                         <Label htmlFor="edit-reservation-table">Table</Label>
-                        <Input 
-                          id="edit-reservation-table" 
-                          defaultValue={selectedReservation.tableId} 
+                        <select
+                          id="edit-reservation-table"
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={selectedReservation.tableId}
                           onChange={(e) => setSelectedReservation({...selectedReservation, tableId: e.target.value})}
-                        />
+                        >
+                          <option value="">Select a table</option>
+                          {Object.entries(TABLE_NAMES).map(([id, name]) => (
+                            <option key={id} value={id}>{name}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                     
