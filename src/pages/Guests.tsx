@@ -103,7 +103,7 @@ export default function Guests() {
       console.log('Finished fetching guests');
       setIsLoading(false);
     }
-  }, []); // Added dependency array for useCallback
+  }, [toast]); // Added toast to dependency array
 
   // Fetch guests when component mounts
   useEffect(() => {

@@ -1,7 +1,8 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Calendar, Filter, FileText, Plus, Users, DollarSign } from 'lucide-react';
+import { ApiClient } from '../lib/ApiClient'; // Added ApiClient import
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -21,19 +22,37 @@ import {
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 
+// Interface for the raw data from the backend
+interface BackendReservation {
+  id: string;
+  guest_id: string;
+  customer_name: string;
+  customer_email?: string | null;
+  date: string; // YYYY-MM-DD string from DB
+  time: string; // HH:MM string from DB
+  reservation_time: string; // Full ISO timestamp string
+  party_size: number;
+  table_id: string; // UUID of the table
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no-show';
+  notes?: string | null;
+  total_amount?: number | null;
+  // Other fields like created_at, restaurant_id etc. will also be present from 'select *'
+}
+
+// Updated frontend Reservation interface
 interface Reservation {
   id: string;
-  guestId: string;
-  guestName: string;
-  guestEmail: string;
-  guestInitials: string;
-  date: Date;
-  time: string;
-  partySize: number;
-  tableNumber: string;
-  status: 'confirmed' | 'pending' | 'cancelled' | 'completed';
-  specialRequests?: string;
-  billAmount?: number;
+  guestId: string; // from guest_id
+  guestName: string; // from customer_name
+  guestEmail?: string; // from customer_email, made optional
+  guestInitials: string; // Derived from customer_name
+  date: Date; // Parsed from backend 'date' string or 'reservation_time'
+  time: string; // From backend 'time' string
+  partySize: number; // from party_size
+  tableId: string; // Changed from tableNumber, will store table_id (UUID)
+  status: 'confirmed' | 'pending' | 'cancelled' | 'completed' | 'no-show'; // Expanded status
+  specialRequests?: string; // from notes
+  billAmount?: number; // from total_amount
 }
 
 interface CustomerSearchResult {
@@ -44,7 +63,7 @@ interface CustomerSearchResult {
 }
 
 // Debounce utility
-function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
+function debounce<F extends (...args: unknown[]) => unknown>(func: F, waitFor: number) {
   let timeout: ReturnType<typeof setTimeout> | null = null;
 
   const debounced = (...args: Parameters<F>) => {
@@ -74,107 +93,13 @@ const getInitials = (name: string = '') => {
     .toUpperCase();
 };
 
-// Mock data - using today's date for all reservations
-const initialReservationsData: Reservation[] = [
-  {
-    id: 'r1',
-    guestId: '1',
-    guestName: 'John Smith',
-    guestEmail: 'john.smith@example.com',
-    guestInitials: 'JS',
-    date: todayAtHour(19, 0),
-    time: '19:00',
-    partySize: 2,
-    tableNumber: 'T12',
-    status: 'confirmed',
-    specialRequests: 'Anniversary dinner'
-  },
-  {
-    id: 'r2',
-    guestId: '2',
-    guestName: 'Sarah Johnson',
-    guestEmail: 'sarah.j@example.com',
-    guestInitials: 'SJ',
-    date: todayAtHour(20, 30),
-    time: '20:30',
-    partySize: 4,
-    tableNumber: 'T08',
-    status: 'confirmed',
-    specialRequests: 'Window seat preferred'
-  },
-  {
-    id: 'r3',
-    guestId: '3',
-    guestName: 'Michael Chen',
-    guestEmail: 'michael.c@example.com',
-    guestInitials: 'MC',
-    date: todayAtHour(18, 30),
-    time: '18:30',
-    partySize: 3,
-    tableNumber: 'T04',
-    status: 'pending',
-    specialRequests: 'Allergic to shellfish'
-  },
-  {
-    id: 'r4',
-    guestId: '4',
-    guestName: 'Emma Wilson',
-    guestEmail: 'emma.w@example.com',
-    guestInitials: 'EW',
-    date: todayAtHour(19, 30),
-    time: '19:30',
-    partySize: 2,
-    tableNumber: 'T06',
-    status: 'completed',
-    billAmount: 142.75,
-    specialRequests: 'Celebrating birthday'
-  },
-  {
-    id: 'r5',
-    guestId: '5',
-    guestName: 'David Kim',
-    guestEmail: 'david.k@example.com',
-    guestInitials: 'DK',
-    date: todayAtHour(20, 0),
-    time: '20:00',
-    partySize: 6,
-    tableNumber: 'T10',
-    status: 'confirmed',
-    specialRequests: 'Business dinner, need quiet area'
-  },
-  {
-    id: 'r6',
-    guestId: '6',
-    guestName: 'Lisa Wong',
-    guestEmail: 'lisa.w@example.com',
-    guestInitials: 'LW',
-    date: todayAtHour(18, 0),
-    time: '18:00',
-    partySize: 2,
-    tableNumber: 'T03',
-    status: 'confirmed',
-    specialRequests: 'Vegetarian'
-  },
-  {
-    id: 'r7',
-    guestId: '7',
-    guestName: 'Robert Taylor',
-    guestEmail: 'robert.t@example.com',
-    guestInitials: 'RT',
-    date: todayAtHour(21, 0),
-    time: '21:00',
-    partySize: 4,
-    tableNumber: 'T07',
-    status: 'pending',
-    specialRequests: 'Will arrive 15 mins late'
-  }
-]
+
 
 type DateFilterType = 'today' | 'week' | 'month' | 'custom';
 
 export default function Reservations() {
-  // Calculate 'today' once per component mount
-  const today = new Date();
+  // Calculate 'today' once per component mount, memoized
+  const today = useMemo(() => new Date(), []);
   // Defensive UI before any logic or hooks
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -184,7 +109,7 @@ export default function Reservations() {
   const reservationIdFromQuery = queryParams.get('id');
   const { toast } = useToast();
 
-  const [reservations, setReservations] = useState<Reservation[]>(initialReservationsData);
+  const [reservations, setReservations] = useState<Reservation[]>([]); // Initialize with empty array
   const [dateRange, setDateRange] = useState({
     from: new Date(),
     to: new Date()
@@ -192,9 +117,63 @@ export default function Reservations() {
   const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [filteredReservations, setFilteredReservations] = useState<Reservation[]>(reservations);
+  const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
   const [isAddReservationOpen, setIsAddReservationOpen] = useState(false);
   const [isEditReservationOpen, setIsEditReservationOpen] = useState(false);
+  // Fetch reservations from API
+  const fetchReservations = useCallback(async () => {
+    console.log('[Reservations.tsx] Starting to fetch reservations...');
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const fetchedData = await ApiClient.get<BackendReservation[]>('/reservations');
+      console.log('[Reservations.tsx] Response data from ApiClient.get /reservations:', fetchedData);
+
+      if (!Array.isArray(fetchedData)) {
+        throw new Error('Invalid data format received for reservations.');
+      }
+
+      const formattedReservations = fetchedData.map((res: BackendReservation) => ({
+        id: res.id,
+        guestId: res.guest_id,
+        guestName: res.customer_name,
+        guestEmail: res.customer_email || undefined,
+        guestInitials: getInitials(res.customer_name),
+        date: new Date(res.date + 'T00:00:00'), // Assuming res.date is YYYY-MM-DD, parse as local midnight
+        time: res.time, // HH:MM string
+        partySize: res.party_size,
+        tableId: res.table_id, // Store table_id
+        status: res.status,
+        specialRequests: res.notes || undefined,
+        billAmount: res.total_amount || undefined,
+      }));
+      
+      console.log('[Reservations.tsx] Formatted reservations:', formattedReservations);
+      setReservations(formattedReservations);
+      // setFilteredReservations(formattedReservations); // Filtering will be applied later
+    } catch (error) {
+      console.error('Failed to fetch reservations:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch reservations';
+      setFetchError(errorMessage);
+      toast({
+        title: "Error Fetching Reservations",
+        description: errorMessage,
+        variant: "destructive"
+      });
+      setReservations([]); // Clear reservations on error
+      // setFilteredReservations([]);
+    } finally {
+      console.log('[Reservations.tsx] Finished fetching reservations attempt.');
+      setLoading(false);
+    }
+  }, [toast]);
+
+  // Fetch reservations when component mounts
+  useEffect(() => {
+    console.log('[Reservations.tsx] Component mounted, fetching reservations...');
+    fetchReservations();
+  }, [fetchReservations]);
+
   const [newReservation, setNewReservation] = useState({
     guestId: guestIdFromQuery || '',
     guestName: '', 
@@ -270,14 +249,20 @@ export default function Reservations() {
       setNewGuestDetails({ name: '', email: '', phone: '' }); // Reset form
       setIsCreatingGuest(false);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Network or unexpected error creating guest:', error);
-      setCreateGuestError(error.message || 'A network error occurred. Please try again.');
+      let errorMessage = 'A network error occurred. Please try again.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      setCreateGuestError(errorMessage);
       setIsCreatingGuest(false);
     }
   };
 
-  const fetchGuestSuggestions = useCallback(debounce(async (searchTerm: string) => {
+  const rawFetchGuestSuggestions = useCallback(async (searchTerm: string) => {
     if (searchTerm.length < 2) { // Minimum characters to trigger search
       setGuestSearchResults([]);
       return;
@@ -298,53 +283,14 @@ export default function Reservations() {
       setGuestSearchResults([]);
     }
     setIsGuestSearchLoading(false);
-  }, 300), []); // 300ms debounce
+  }, [setGuestSearchResults, setIsGuestSearchLoading, setGuestSearchError]);
 
-  const API_BASE_URL = 'https://xpressdine-backend.vercel.app';
+  const fetchGuestSuggestions = useMemo(
+    () => debounce(rawFetchGuestSuggestions, 300),
+    [rawFetchGuestSuggestions]
+  );
 
-  const fetchReservations = useCallback(async () => {
-    setLoading(true);
-    setFetchError(null);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/reservations`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to fetch reservations: ${response.statusText}`);
-      }
-      const result = await response.json();
-      const backendReservations = result.data || [];
 
-      const transformedReservations: Reservation[] = backendReservations.map((res: any) => {
-        const reservationDateTime = new Date(res.reservation_time);
-        return {
-          id: res.id,
-          guestId: res.guest_id || '',
-          guestName: res.customer_name || 'N/A',
-          guestEmail: res.customer_email || '',
-          guestInitials: getInitials(res.customer_name),
-          date: reservationDateTime,
-          time: format(reservationDateTime, 'HH:mm'),
-          partySize: res.party_size || res.guests || 0,
-          tableNumber: res.table_number || (res.table ? res.table.number : 'N/A'),
-          status: res.status,
-          specialRequests: res.notes || '',
-          billAmount: res.bill_amount,
-        };
-      });
-
-      setReservations(transformedReservations);
-    } catch (error) {
-      console.error('Error fetching reservations:', error);
-      setFetchError(error instanceof Error ? error.message : 'An unknown error occurred');
-      setReservations([]); // Clear reservations on error or set to empty
-    } finally {
-      setLoading(false);
-    }
-  }, []); // Dependencies: API_BASE_URL is a const, setLoading, setFetchError, setReservations are stable from useState
-
-  useEffect(() => {
-    fetchReservations();
-  }, [fetchReservations]);
   
   // Find reservation by ID if specified in query params
   useEffect(() => {
@@ -404,7 +350,7 @@ export default function Reservations() {
     }
     
     setFilteredReservations(filtered);
-  }, [dateFilter, dateRange, statusFilter, guestIdFromQuery, reservations]);
+  }, [dateFilter, dateRange, statusFilter, guestIdFromQuery, reservations, today]);
 
   // Defensive UI before any logic or hooks
   if (loading) {
@@ -517,9 +463,7 @@ export default function Reservations() {
         date: new Date(responseData.reservation_time), // Convert ISO string to Date object
         time: format(new Date(responseData.reservation_time), 'HH:mm'), // Extract time
         partySize: responseData.party_size,
-        // Backend returns table_id, frontend Reservation type expects tableNumber.
-        // Using the original tableNumber sent for now.
-        tableNumber: newReservation.tableNumber, 
+        tableId: responseData.table_id, // Use table_id from backend response 
         status: responseData.status as Reservation['status'],
         specialRequests: responseData.notes || undefined,
         // billAmount is not part of creation response
@@ -534,11 +478,17 @@ export default function Reservations() {
         description: `Reservation for ${createdReservation.guestName} on ${format(createdReservation.date, 'PPP')} at ${createdReservation.time} has been created.`
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Network or unexpected error creating reservation:', error);
+      let errorMessage = 'A network error occurred. Please try again.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
       toast({
         title: "Creation Failed",
-        description: error.message || 'A network error occurred. Please try again.',
+        description: errorMessage,
         variant: "destructive"
       });
       return; // Keep dialog open for user to retry or check details
@@ -580,7 +530,7 @@ export default function Reservations() {
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
       partySize: selectedReservation.partySize,
-      tableNumber: selectedReservation.tableNumber,
+      table_number: selectedReservation.tableId, // Send tableId (as string) as table_number
       status: selectedReservation.status,
       specialRequests: selectedReservation.specialRequests,
     };
@@ -616,7 +566,7 @@ export default function Reservations() {
         date: new Date(responseData.reservation_time), // Convert ISO string to Date object
         time: format(new Date(responseData.reservation_time), 'HH:mm'), // Extract time
         partySize: responseData.party_size,
-        tableNumber: selectedReservation.tableNumber, // Assuming tableNumber itself isn't changed by backend unless explicitly part of response mapping
+        tableId: responseData.table_id, // Use table_id from backend response
         status: responseData.status as Reservation['status'],
         specialRequests: responseData.notes || undefined,
         billAmount: responseData.bill_amount || undefined, // If backend sends it
@@ -632,11 +582,17 @@ export default function Reservations() {
         description: `Reservation for ${updatedReservationFromAPI.guestName} has been updated.`
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Network or unexpected error updating reservation:', error);
+      let errorMessage = 'A network error occurred. Please try again.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
       toast({
         title: "Update Failed",
-        description: error.message || 'A network error occurred. Please try again.',
+        description: errorMessage,
         variant: "destructive"
       });
       // Keep dialog open for user to retry or check details
@@ -667,7 +623,7 @@ export default function Reservations() {
         format(res.date, 'yyyy-MM-dd'),
         res.time,
         res.partySize,
-        res.tableNumber,
+        res.tableId,
         res.status,
         res.billAmount || ''
       ].join(','))
@@ -1128,7 +1084,7 @@ export default function Reservations() {
                       <Users className="mr-1 h-4 w-4 text-muted-foreground" />
                       {reservation.partySize}
                     </div>
-                    <div>{reservation.tableNumber}</div>
+                    <div>{reservation.tableId}</div>
                     <div>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${getStatusBadgeClass(reservation.status)}`}>
                         {reservation.status.charAt(0).toUpperCase() + reservation.status.slice(1)}
@@ -1155,18 +1111,6 @@ export default function Reservations() {
             
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4">
-                <Avatar className="h-12 w-12 bg-primary text-primary-foreground">
-                  <AvatarFallback>{selectedReservation.guestInitials}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h2 className="text-xl font-semibold">{selectedReservation.guestName}</h2>
-                  <p className="text-muted-foreground">{selectedReservation.guestEmail}</p>
-                </div>
-              </div>
-              <div>
-                <span className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-medium ${getStatusBadgeClass(selectedReservation.status)}`}>
-                  {selectedReservation.status.charAt(0).toUpperCase() + selectedReservation.status.slice(1)}
-                </span>
               </div>
             </div>
             
@@ -1273,7 +1217,7 @@ export default function Reservations() {
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Table</h3>
-                  <p>{selectedReservation.tableNumber}</p>
+                  <p>{selectedReservation.tableId}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Special Requests</h3>
@@ -1347,8 +1291,8 @@ export default function Reservations() {
                         <Label htmlFor="edit-reservation-table">Table</Label>
                         <Input 
                           id="edit-reservation-table" 
-                          value={selectedReservation.tableNumber}
-                          onChange={(e) => setSelectedReservation({...selectedReservation, tableNumber: e.target.value})}
+                          defaultValue={selectedReservation.tableId} 
+                          onChange={(e) => setSelectedReservation({...selectedReservation, tableId: e.target.value})}
                         />
                       </div>
                     </div>
