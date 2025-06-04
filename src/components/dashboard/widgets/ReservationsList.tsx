@@ -51,9 +51,10 @@ export function ReservationsList() {
 
         setReservations(result.data || []);
 
-      } catch (err: any) {
-        console.error("Failed to fetch today's reservations:", err);
-        setError(err.message || 'Failed to load reservations. Please try again later.');
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error('Unknown error');
+        console.error("Failed to fetch today's reservations:", error);
+        setError(error.message || 'Failed to load reservations. Please try again later.');
         setReservations([]); // Clear reservations on error to avoid displaying stale data
       } finally {
         setIsLoading(false);

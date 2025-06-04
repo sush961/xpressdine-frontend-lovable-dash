@@ -141,6 +141,8 @@ const initialReservationsData: Reservation[] = [
 type DateFilterType = 'today' | 'week' | 'month' | 'custom';
 
 export default function Reservations() {
+  // Calculate 'today' once per component mount
+  const today = new Date();
   // Defensive UI before any logic or hooks
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -173,8 +175,6 @@ export default function Reservations() {
   const [currentBillAmount, setCurrentBillAmount] = useState<string>('');
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
-  const today = new Date();
-
   // Use mock data directly
   useEffect(() => {
     setLoading(true);
@@ -198,7 +198,6 @@ export default function Reservations() {
     
     // Filter by date range
     if (dateFilter === 'today') {
-      const today = new Date();
       filtered = filtered.filter(reservation => 
         reservation.date.getDate() === today.getDate() &&
         reservation.date.getMonth() === today.getMonth() &&
@@ -292,6 +291,11 @@ export default function Reservations() {
       res.id === updatedReservation.id ? updatedReservation : res
     );
     
+    const today = {
+      start: new Date(new Date().setHours(0, 0, 0, 0)),
+      end: new Date(new Date().setHours(23, 59, 59, 999)),
+    };
+    //fetchReservations(today);
     setReservations(updatedReservations);
     setSelectedReservation(updatedReservation);
     
@@ -355,6 +359,11 @@ export default function Reservations() {
       res.id === selectedReservation.id ? selectedReservation : res
     );
     
+    const today = {
+      start: new Date(new Date().setHours(0, 0, 0, 0)),
+      end: new Date(new Date().setHours(23, 59, 59, 999)),
+    };
+    //fetchReservations(today);
     setReservations(updatedReservations);
     setIsEditReservationOpen(false);
     

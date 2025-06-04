@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, FileText, Pencil } from 'lucide-react';
@@ -59,23 +60,23 @@ export default function Guests() {
     phone: ''
   });
 
-  // Fetch guests when component mounts
-  useEffect(() => {
-    console.log('Component mounted, fetching guests...');
-    fetchGuests();
-  }, []);
-
   // Fetch guests from API
-  const fetchGuests = async () => {
+  const fetchGuests = React.useCallback(async () => {
     console.log('[Guests.tsx] Starting to fetch guests...');
     setIsLoading(true);
     try {
       // Type assertion for the expected response structure from /api/customers GET
-      const result = await ApiClient.get<{ data: Guest[], error: any | null }>('/customers');
+      const result = await ApiClient.get<{ data: Guest[], error: unknown | null }>('/customers');
       console.log('[Guests.tsx] Response data from ApiClient.get:', result);
 
       if (result.error) {
-        throw new Error(result.error.message || result.error || 'Failed to fetch guests');
+        let errorMessage = 'Failed to fetch guests';
+        if (typeof result.error === 'object' && result.error !== null && 'message' in result.error) {
+          errorMessage = (result.error as { message?: string }).message || errorMessage;
+        } else if (typeof result.error === 'string') {
+          errorMessage = result.error;
+        }
+        throw new Error(errorMessage);
       }
       
       const formattedGuests = result.data.map((guest: Guest) => ({
@@ -102,7 +103,13 @@ export default function Guests() {
       console.log('Finished fetching guests');
       setIsLoading(false);
     }
-  };
+  }, []); // Added dependency array for useCallback
+
+  // Fetch guests when component mounts
+  useEffect(() => {
+    console.log('Component mounted, fetching guests...');
+    fetchGuests();
+  }, [fetchGuests]);
 
   // Handle adding a new guest
   const handleAddGuest = async (e: React.FormEvent) => {
@@ -127,13 +134,13 @@ export default function Guests() {
       console.log('[Guests.tsx] Making POST request with payload:', payload);
 
       // Type assertion for the expected response structure from /api/customers POST
-      const result = await ApiClient.post<{ data: Guest, error: any | null }>('/customers', payload);
+      const result = await ApiClient.post<{ data: Guest, error: unknown | null }>('/customers', payload);
       console.log('[Guests.tsx] Response data from ApiClient.post:', result);
 
       if (result.error) {
         // The ApiClient might throw an error for non-ok status, 
         // but if it doesn't and returns an error object (e.g. for 409 conflict)
-        throw new Error(result.error.message || result.error || 'Failed to add guest');
+        throw new Error(result.error?.message || result.error || 'Failed to add guest');
       }
       
       console.log('[Guests.tsx] Successfully added guest:', result.data);
@@ -169,14 +176,14 @@ export default function Guests() {
     try {
       // Ensure we only send necessary data, backend might not expect 'initials'
       const { initials, ...guestDataToUpdate } = selectedGuest;
-      const result = await ApiClient.put<{ data: Guest, error: any | null }>(
+      const result = await ApiClient.put<{ data: Guest, error: unknown | null }>(
         `/customers/${guestDataToUpdate.id}`,
         guestDataToUpdate
       );
       console.log('[Guests.tsx] Response data from ApiClient.put:', result);
 
       if (result.error) {
-        throw new Error(result.error.message || result.error || 'Failed to update guest');
+        throw new Error(result.error?.message || result.error || 'Failed to update guest');
       }
       
       console.log('[Guests.tsx] Successfully updated guest:', result.data);
@@ -208,7 +215,7 @@ export default function Guests() {
       formData.append('file', csvFile);
       
       // Assuming the import endpoint might return a summary or status
-      const result = await ApiClient.post<{ message?: string; success?: boolean; data?: any; error?: any | null }>(
+      const result = await ApiClient.post<{ message?: string; success?: boolean; data?: unknown; error?: unknown | null }>(
         '/customers/import',
         formData
       );

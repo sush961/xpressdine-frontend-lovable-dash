@@ -77,9 +77,10 @@ export default function Dashboard() {
           console.error('Unexpected data format in metrics response:', result);
           throw new Error('Received invalid data format from server');
         }
-      } catch (err: any) {
-        console.error('Failed to fetch dashboard metrics:', err);
-        setStatsError(err.message || 'Failed to load dashboard metrics');
+      } catch (err) {
+        const error = err as Error;
+        console.error('Failed to fetch dashboard metrics:', error);
+        setStatsError(error.message || 'Failed to load dashboard metrics');
         
         // Fallback to mock data on error
         setDashboardStats({
@@ -95,47 +96,6 @@ export default function Dashboard() {
     fetchDashboardMetrics();
   }, [API_BASE_URL]);
 
-  // Generate mock data that works for any month, including June
-  const generateMockData = () => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    
-    // Generate daily data (hours of the day)
-    const dailyData: ActivityChartDataPoint[] = [
-      { name: '8 AM', reservations: 3, revenue: 120 },
-      { name: '10 AM', reservations: 5, revenue: 210 },
-      { name: '12 PM', reservations: 12, revenue: 580 },
-      { name: '2 PM', reservations: 8, revenue: 340 },
-      { name: '4 PM', reservations: 6, revenue: 290 },
-      { name: '6 PM', reservations: 15, revenue: 720 },
-      { name: '8 PM', reservations: 18, revenue: 850 },
-    ];
-    
-    // Generate weekly data (days of the week)
-    const weeklyData: ActivityChartDataPoint[] = [
-      { name: 'Mon', reservations: 22, revenue: 980 },
-      { name: 'Tue', reservations: 18, revenue: 820 },
-      { name: 'Wed', reservations: 24, revenue: 1100 },
-      { name: 'Thu', reservations: 28, revenue: 1250 },
-      { name: 'Fri', reservations: 35, revenue: 1650 },
-      { name: 'Sat', reservations: 42, revenue: 1950 },
-      { name: 'Sun', reservations: 30, revenue: 1350 },
-    ];
-    
-    // Generate monthly data (weeks of the month)
-    const monthlyData: ActivityChartDataPoint[] = [
-      { name: 'Week 1', reservations: 120, revenue: 5400 },
-      { name: 'Week 2', reservations: 145, revenue: 6500 },
-      { name: 'Week 3', reservations: 160, revenue: 7200 },
-      { name: 'Week 4', reservations: 180, revenue: 8100 },
-    ];
-    
-    return { dailyData, weeklyData, monthlyData };
-  };
-  
-  const { dailyData: mockDailyData, weeklyData: mockWeeklyData, monthlyData: mockMonthlyData } = generateMockData();
-
   useEffect(() => {
     const fetchActivityData = async () => {
       setIsActivityLoading(true);
@@ -143,7 +103,7 @@ export default function Dashboard() {
       try {
         // Calculate appropriate date range based on the selected filter
         const now = new Date();
-        let startDate = new Date(now);
+        const startDate = new Date(now);
         const endDate = now;
         
         // Adjust start date based on selected period
@@ -166,7 +126,7 @@ export default function Dashboard() {
         const formattedEndDate = endDate.toISOString().split('T')[0];
         
         // Get the correct granularity value for the API
-        const validGranularity = mapFilterToApiPeriod(revenueFilter);
+        const validGranularity = revenueFilter;
         
         console.log(`Date range for ${revenueFilter} view:`, { start: formattedStartDate, end: formattedEndDate });
         
@@ -197,9 +157,9 @@ export default function Dashboard() {
         if (result.data && Array.isArray(result.data)) {
           try {
             // Map the API response to the expected format with defensive programming
-            const formattedData: ActivityChartDataPoint[] = result.data.map((item: any) => {
+            const formattedData: ActivityChartDataPoint[] = result.data.map((item: Record<string, unknown>) => {
               // Use label if available, otherwise fall back to name
-              const label = item.label || item.name || 'Unknown';
+              const label = typeof item.label === 'string' ? item.label : (typeof item.name === 'string' ? item.name : 'Unknown');
               const reservations = typeof item.reservations === 'number' ? item.reservations : 0;
               const revenue = typeof item.revenue === 'number' ? item.revenue : 0;
               
@@ -227,9 +187,10 @@ export default function Dashboard() {
           setActivityError('Received unexpected data format from server');
           setLiveActivityData(null);
         }
-      } catch (err: any) {
-        console.error('Failed to fetch activity data:', err);
-        setActivityError(err.message || 'Failed to load activity data');
+      } catch (err) {
+        const error = err as Error;
+        console.error('Failed to fetch activity data:', error);
+        setActivityError(error.message || 'Failed to load activity data');
         setLiveActivityData(null); // Clear previous live data on error
       } finally {
         setIsActivityLoading(false);
@@ -261,24 +222,6 @@ export default function Dashboard() {
     return filter;
   };
 
-  const getChartTitle = (filter: 'day' | 'week' | 'month') => {
-    if (filter === 'day') return 'Daily Activity';
-    if (filter === 'week') return 'Weekly Activity';
-    return 'Monthly Activity'; // month
-  };
-  
-  // Select the appropriate data based on the filter
-  const currentActivityData = useMemo(() => {
-    // Prioritize live data if successfully fetched
-    if (liveActivityData && !activityError) {
-      return liveActivityData;
-    }
-    // Fallback to mock data if live data is loading, failed, or not yet available
-    if (revenueFilter === 'day') return mockDailyData;
-    if (revenueFilter === 'week') return mockWeeklyData;
-    return mockMonthlyData; // month for mock data
-  }, [liveActivityData, activityError, revenueFilter, mockDailyData, mockWeeklyData, mockMonthlyData]);
-  
   // Function to format the date for the current month/year regardless of when viewed
   const formatCurrentDate = () => {
     const now = new Date();
@@ -358,10 +301,10 @@ export default function Dashboard() {
                 title="Total Reservations"
                 value={dashboardStats.totalReservations.value.toString()}
                 description={dashboardStats.totalReservations.description}
-                trend={{
+                trend={dashboardStats.totalReservations.trend ? {
                   value: dashboardStats.totalReservations.trend.value,
                   positive: dashboardStats.totalReservations.trend.positive,
-                }}
+                } : undefined}
                 icon={<Calendar size={24} />}
               />
             )}
@@ -377,10 +320,10 @@ export default function Dashboard() {
                 title="Unique Guests"
                 value={dashboardStats.uniqueGuests.value.toString()}
                 description={dashboardStats.uniqueGuests.description}
-                trend={{
+                trend={dashboardStats.uniqueGuests.trend ? {
                   value: dashboardStats.uniqueGuests.trend.value,
                   positive: dashboardStats.uniqueGuests.trend.positive,
-                }}
+                } : undefined}
                 icon={<Users size={24} />}
               />
             )}
@@ -395,10 +338,10 @@ export default function Dashboard() {
                 title="Average Order Value"
                 value={dashboardStats.averageOrderValue.value} // Already a string from API
                 description={dashboardStats.averageOrderValue.description}
-                trend={{
+                trend={dashboardStats.averageOrderValue.trend ? {
                   value: dashboardStats.averageOrderValue.trend.value,
                   positive: dashboardStats.averageOrderValue.trend.positive,
-                }}
+                } : undefined}
                 icon={<Utensils size={24} />}
               />
             )}
@@ -455,10 +398,14 @@ export default function Dashboard() {
                   <div className="h-[300px] flex items-center justify-center text-destructive">
                     Error: {activityError}
                   </div>
-                ) : currentActivityData && currentActivityData.length > 0 ? (
-                  <ActivityChart 
-                    title={getChartTitle(revenueFilter)} 
-                    data={currentActivityData} 
+                ) : (liveActivityData && !activityError && liveActivityData.length > 0) ? (
+                  <ActivityChart
+                    title={
+                      revenueFilter === 'day' ? 'Daily Activity' :
+                      revenueFilter === 'week' ? 'Weekly Activity' :
+                      'Monthly Activity'
+                    }
+                    data={liveActivityData}
                   />
                 ) : (
                   <div className="h-[300px] flex items-center justify-center text-muted-foreground">
@@ -466,35 +413,36 @@ export default function Dashboard() {
                   </div>
                 )}
               </TabsContent>
-              
               <TabsContent value="pie">
-                <div className="h-[300px] w-full p-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPC>
-                      <Pie
-                        data={distributionData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {distributionData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        formatter={(value) => [`${value}%`, 'Revenue Share']}
-                      />
-                      <Legend />
-                    </RechartsPC>
-                  </ResponsiveContainer>
+                <div>
+                  <div className="h-[300px] w-full p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPC>
+                        <Pie
+                          data={distributionData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {distributionData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          formatter={(value) => [`${value}%`, 'Revenue Share']}
+                        />
+                        <Legend />
+                      </RechartsPC>
+                    </ResponsiveContainer>
+                  </div>
+                  <h3 className="text-center text-sm font-medium mt-2 text-muted-foreground">
+                    Revenue Distribution for {formatCurrentDate()}
+                  </h3>
                 </div>
-                <h3 className="text-center text-sm font-medium mt-2 text-muted-foreground">
-                  Revenue Distribution for {formatCurrentDate()}
-                </h3>
               </TabsContent>
             </Tabs>
             
@@ -521,7 +469,6 @@ export default function Dashboard() {
             <ReservationsList />
           </div>
         </div>
-        
         <div className="fixed bottom-6 right-6 md:hidden">
           <Dialog open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
             <DialogTrigger asChild>

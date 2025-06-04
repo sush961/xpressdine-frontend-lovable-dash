@@ -4,16 +4,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xpressdine-ba
 // Make sure API_BASE_URL doesn't end with a slash, but we'll add one in the request function
 const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
 
-interface RequestOptions extends RequestInit {
-  // You can add any custom options here if needed in the future
-}
+type RequestOptions = RequestInit;
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
   // Add any other default headers here, e.g., an API key if not handled by cookies
 };
 
-async function request<T>(endpoint: string, options: RequestOptions = {}, body?: any): Promise<T> {
+async function request<T>(endpoint: string, options: RequestOptions = {}, body?: unknown): Promise<T> {
   // Ensure endpoint starts with '/api/' if not already
   const apiPath = endpoint.startsWith('/api/') ? endpoint : endpoint.startsWith('/') ? `/api${endpoint}` : `/api/${endpoint}`;
   const url = `${baseUrl}${apiPath}`;
@@ -87,17 +85,17 @@ export const ApiClient = {
   get: <T>(endpoint: string, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
     request<T>(endpoint, { ...options, method: 'GET' }),
   
-  post: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
+  post: <T>(endpoint: string, body: unknown, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
     request<T>(endpoint, { ...options, method: 'POST' }, body),
   
-  put: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
+  put: <T>(endpoint: string, body: unknown, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
     request<T>(endpoint, { ...options, method: 'PUT' }, body),
   
   delete: <T>(endpoint: string, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
     request<T>(endpoint, { ...options, method: 'DELETE' }),
   
   // You can add a patch method if needed
-  // patch: <T>(endpoint: string, body: any, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
+  // patch: <T>(endpoint: string, body: unknown, options: Omit<RequestOptions, 'body' | 'method'> = {}) => 
   //   request<T>(endpoint, { ...options, method: 'PATCH' }, body),
 };
 
