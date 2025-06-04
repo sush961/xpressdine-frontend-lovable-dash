@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, FileText } from 'lucide-react';
+import { Search, Plus, FileText, Pencil } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,12 @@ export default function Guests() {
     email: '',
     phone: ''
   });
+
+  // Fetch guests when component mounts
+  useEffect(() => {
+    console.log('Component mounted, fetching guests...');
+    fetchGuests();
+  }, []);
 
   // Fetch guests from API
   const fetchGuests = async () => {
@@ -279,21 +285,37 @@ export default function Guests() {
             {filteredGuests.map((guest) => (
               <div 
                 key={guest.id} 
-                className="flex items-center p-4 border rounded-lg hover:bg-accent cursor-pointer"
-                onClick={() => {
-                  setSelectedGuest(guest);
-                  setActiveTab('info');
+                className="group flex items-center p-4 border rounded-lg hover:bg-accent cursor-pointer relative"
+                onClick={(e) => {
+                  // Only set selected guest if not clicking the edit button
+                  if (!(e.target as HTMLElement).closest('.edit-button')) {
+                    setSelectedGuest(guest);
+                    setActiveTab('info');
+                  }
                 }}
               >
                 <Avatar className="h-9 w-9">
                   <AvatarFallback>{guest.initials}</AvatarFallback>
                 </Avatar>
-                <div className="ml-4 space-y-1">
+                <div className="ml-4 space-y-1 flex-1">
                   <p className="text-sm font-medium leading-none">{guest.name}</p>
                   <p className="text-sm text-muted-foreground">
                     {guest.email} • {guest.phone}
                   </p>
                 </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="edit-button opacity-0 group-hover:opacity-100 h-8 w-8"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedGuest(guest);
+                    setIsEditGuestOpen(true);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                  <span className="sr-only">Edit</span>
+                </Button>
               </div>
             ))}
           </div>
@@ -377,6 +399,53 @@ export default function Guests() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Guest Dialog */}
+      <Dialog open={isEditGuestOpen} onOpenChange={setIsEditGuestOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Guest</DialogTitle>
+          </DialogHeader>
+          {selectedGuest && (
+            <form onSubmit={handleEditGuest} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={selectedGuest.name}
+                  onChange={(e) => setSelectedGuest({...selectedGuest, name: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={selectedGuest.email || ''}
+                  onChange={(e) => setSelectedGuest({...selectedGuest, email: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  value={selectedGuest.phone}
+                  onChange={(e) => setSelectedGuest({...selectedGuest, phone: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsEditGuestOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Save Changes</Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>
