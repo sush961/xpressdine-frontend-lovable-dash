@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Calendar, Filter, FileText, Plus, Users, DollarSign } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
@@ -15,8 +15,9 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogTrigger,
-  DialogFooter
-} from '@/components/ui/dialog';
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -35,11 +36,42 @@ interface Reservation {
   billAmount?: number;
 }
 
+interface CustomerSearchResult {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+// Debounce utility
+function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  const debounced = (...args: Parameters<F>) => {
+    if (timeout !== null) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+    timeout = setTimeout(() => func(...args), waitFor);
+  };
+
+  return debounced as (...args: Parameters<F>) => ReturnType<F>;
+}
+
 // Helper function to create a date for today with a specific time
 const todayAtHour = (hours: number, minutes: number) => {
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
   return date;
+};
+
+// Helper to get initials
+const getInitials = (name: string = '') => {
+  return name
+    .split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase();
 };
 
 // Mock data - using today's date for all reservations
@@ -165,6 +197,8 @@ export default function Reservations() {
   const [isEditReservationOpen, setIsEditReservationOpen] = useState(false);
   const [newReservation, setNewReservation] = useState({
     guestId: guestIdFromQuery || '',
+    guestName: '', 
+    guestEmail: '', // Added for selected guest's email
     date: new Date(),
     time: '19:00',
     partySize: 2,
@@ -174,13 +208,143 @@ export default function Reservations() {
   const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
   const [currentBillAmount, setCurrentBillAmount] = useState<string>('');
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [guestSearchTerm, setGuestSearchTerm] = useState('');
+  const [guestSearchResults, setGuestSearchResults] = useState<CustomerSearchResult[]>([]);
+  const [isGuestSearchLoading, setIsGuestSearchLoading] = useState(false);
+  const [guestSearchError, setGuestSearchError] = useState<string | null>(null);
+  const [isCreateGuestDialogOpen, setIsCreateGuestDialogOpen] = useState(false);
+  const [newGuestDetails, setNewGuestDetails] = useState({ name: '', email: '', phone: '' });
+  const [isCreatingGuest, setIsCreatingGuest] = useState(false);
+  const [createGuestError, setCreateGuestError] = useState<string | null>(null);
 
-  // Use mock data directly
-  useEffect(() => {
+  const handleCreateGuest = async () => {
+    if (!newGuestDetails.name.trim()) {
+      setCreateGuestError("Guest name is required.");
+      return;
+    }
+    // Optional: Add more validation for email or phone if needed
+
+    setIsCreatingGuest(true);
+    setCreateGuestError(null);
+    const API_BASE_URL = 'https://xpressdine-backend.vercel.app';
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/customers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newGuestDetails.name,
+          email: newGuestDetails.email || null, // Send null if empty, backend might handle it
+          phone: newGuestDetails.phone || null, // Send null if empty
+        }),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to create guest:', responseData);
+        setCreateGuestError(responseData.error || responseData.message || 'An unknown error occurred.');
+        setIsCreatingGuest(false);
+        return;
+      }
+
+      // Guest created successfully
+      toast({
+        title: "Guest Created Successfully",
+        description: `${responseData.name} has been added to the system.`
+      });
+
+      // Update reservation form with new guest details
+      setNewReservation(prev => ({
+        ...prev,
+        guestId: responseData.id,
+        guestName: responseData.name,
+        guestEmail: responseData.email || '',
+      }));
+      setGuestSearchTerm(responseData.name); // Pre-fill search with new guest's name
+      setGuestSearchResults([]); // Clear previous search results
+
+      setIsCreateGuestDialogOpen(false);
+      setNewGuestDetails({ name: '', email: '', phone: '' }); // Reset form
+      setIsCreatingGuest(false);
+
+    } catch (error: any) {
+      console.error('Network or unexpected error creating guest:', error);
+      setCreateGuestError(error.message || 'A network error occurred. Please try again.');
+      setIsCreatingGuest(false);
+    }
+  };
+
+  const fetchGuestSuggestions = useCallback(debounce(async (searchTerm: string) => {
+    if (searchTerm.length < 2) { // Minimum characters to trigger search
+      setGuestSearchResults([]);
+      return;
+    }
+    setIsGuestSearchLoading(true);
+    setGuestSearchError(null);
+    try {
+      const response = await fetch(`/api/customers?search=${encodeURIComponent(searchTerm)}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch guests: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setGuestSearchResults(data.data || []);
+    } catch (error) {
+      console.error('Error fetching guest suggestions:', error);
+      setGuestSearchError(error instanceof Error ? error.message : 'An unknown error occurred');
+      setGuestSearchResults([]);
+    }
+    setIsGuestSearchLoading(false);
+  }, 300), []); // 300ms debounce
+
+  const API_BASE_URL = 'https://xpressdine-backend.vercel.app';
+
+  const fetchReservations = useCallback(async () => {
     setLoading(true);
-    setReservations(initialReservationsData);
-    setLoading(false);
-  }, []);
+    setFetchError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reservations`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch reservations: ${response.statusText}`);
+      }
+      const result = await response.json();
+      const backendReservations = result.data || [];
+
+      const transformedReservations: Reservation[] = backendReservations.map((res: any) => {
+        const reservationDateTime = new Date(res.reservation_time);
+        return {
+          id: res.id,
+          guestId: res.guest_id || '',
+          guestName: res.customer_name || 'N/A',
+          guestEmail: res.customer_email || '',
+          guestInitials: getInitials(res.customer_name),
+          date: reservationDateTime,
+          time: format(reservationDateTime, 'HH:mm'),
+          partySize: res.party_size || res.guests || 0,
+          tableNumber: res.table_number || (res.table ? res.table.number : 'N/A'),
+          status: res.status,
+          specialRequests: res.notes || '',
+          billAmount: res.bill_amount,
+        };
+      });
+
+      setReservations(transformedReservations);
+    } catch (error) {
+      console.error('Error fetching reservations:', error);
+      setFetchError(error instanceof Error ? error.message : 'An unknown error occurred');
+      setReservations([]); // Clear reservations on error or set to empty
+    } finally {
+      setLoading(false);
+    }
+  }, []); // Dependencies: API_BASE_URL is a const, setLoading, setFetchError, setReservations are stable from useState
+
+  useEffect(() => {
+    fetchReservations();
+  }, [fetchReservations]);
   
   // Find reservation by ID if specified in query params
   useEffect(() => {
@@ -280,25 +444,6 @@ export default function Reservations() {
 
   const updateReservationStatus = (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number) => {
     if (!selectedReservation) return;
-    
-    const updatedReservation = {
-      ...selectedReservation,
-      status,
-      ...(billAmount !== undefined ? { billAmount } : {})
-    };
-    
-    const updatedReservations = reservations.map(res => 
-      res.id === updatedReservation.id ? updatedReservation : res
-    );
-    
-    const today = {
-      start: new Date(new Date().setHours(0, 0, 0, 0)),
-      end: new Date(new Date().setHours(23, 59, 59, 999)),
-    };
-    //fetchReservations(today);
-    setReservations(updatedReservations);
-    setSelectedReservation(updatedReservation);
-    
     toast({
       title: "Status updated",
       description: `Reservation status changed to ${status}.`
@@ -308,69 +453,194 @@ export default function Reservations() {
     setCurrentBillAmount('');
   };
 
-  const handleAddReservation = () => {
-    // In a real app, this would validate more thoroughly and talk to an API
-    
-    const guestName = guestIdFromQuery ? 
-      reservations.find(r => r.guestId === guestIdFromQuery)?.guestName || "Guest" : 
-      "New Guest";
-    
-    const guestInitials = guestName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    
-    const newId = `r${reservations.length + 1}`;
-    
-    const reservationToAdd: Reservation = {
-      id: newId,
+  const handleAddReservation = async () => {
+    // Basic validation: Ensure a guest is selected if guest search was attempted or if guestId is expected
+    if (!newReservation.guestId && guestSearchTerm) {
+      toast({
+        title: "Guest Not Selected",
+        description: "Please select a guest from the search results or clear the search to enter manually (if supported).",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.guestId) {
+        toast({
+            title: "Guest Required",
+            description: "Please search and select a guest for the reservation.",
+            variant: "destructive"
+          });
+        return;
+    }
+
+    // API Integration for creating reservation
+    const API_BASE_URL = 'https://xpressdine-backend.vercel.app'; // As per memory 40a8a55f-d360-49d3-985f-6e98ff5f7f42
+
+    const payload = {
       guestId: newReservation.guestId,
-      guestName,
-      guestEmail: "email@example.com", // Would be fetched in real app
-      guestInitials,
-      date: newReservation.date,
+      guestName: newReservation.guestName,
+      guestEmail: newReservation.guestEmail,
+      date: format(newReservation.date, 'yyyy-MM-dd'), // Format date for API
       time: newReservation.time,
       partySize: newReservation.partySize,
       tableNumber: newReservation.tableNumber,
-      status: 'confirmed',
-      specialRequests: newReservation.specialRequests
+      specialRequests: newReservation.specialRequests,
     };
-    
-    setReservations([...reservations, reservationToAdd]);
-    setIsAddReservationOpen(false);
-    
-    toast({
-      title: "Reservation created",
-      description: `Reservation for ${format(newReservation.date, 'PPP')} at ${newReservation.time} has been created.`
-    });
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reservations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to create reservation:', responseData);
+        toast({
+          title: "Error Creating Reservation",
+          description: responseData.error || responseData.details || 'An unknown error occurred.',
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Map API response to frontend Reservation type
+      const createdReservation: Reservation = {
+        id: responseData.id,
+        guestId: responseData.guest_id,
+        guestName: responseData.customer_name,
+        guestEmail: responseData.customer_email || '',
+        guestInitials: (responseData.customer_name || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
+        date: new Date(responseData.reservation_time), // Convert ISO string to Date object
+        time: format(new Date(responseData.reservation_time), 'HH:mm'), // Extract time
+        partySize: responseData.party_size,
+        // Backend returns table_id, frontend Reservation type expects tableNumber.
+        // Using the original tableNumber sent for now.
+        tableNumber: newReservation.tableNumber, 
+        status: responseData.status as Reservation['status'],
+        specialRequests: responseData.notes || undefined,
+        // billAmount is not part of creation response
+      };
+
+      // setReservations(prevReservations => [...prevReservations, createdReservation]); // Replaced by fetchReservations
+      fetchReservations(); // Refresh the list from the backend
+      setIsAddReservationOpen(false);
+
+      toast({
+        title: "Reservation Created Successfully",
+        description: `Reservation for ${createdReservation.guestName} on ${format(createdReservation.date, 'PPP')} at ${createdReservation.time} has been created.`
+      });
+
+    } catch (error: any) {
+      console.error('Network or unexpected error creating reservation:', error);
+      toast({
+        title: "Creation Failed",
+        description: error.message || 'A network error occurred. Please try again.',
+        variant: "destructive"
+      });
+      return; // Keep dialog open for user to retry or check details
+    }
     
     // Reset the form
     setNewReservation({
       guestId: '',
+      guestName: '',
+      guestEmail: '', // Added to fix lint error
       date: new Date(),
       time: '19:00',
       partySize: 2,
       tableNumber: '',
       specialRequests: ''
     });
+    setGuestSearchTerm('');
+    setGuestSearchResults([]);
   };
 
-  const handleEditReservation = () => {
+  const handleEditReservation = async () => {
     if (!selectedReservation) return;
     
-    const updatedReservations = reservations.map(res => 
-      res.id === selectedReservation.id ? selectedReservation : res
-    );
-    
-    const today = {
-      start: new Date(new Date().setHours(0, 0, 0, 0)),
-      end: new Date(new Date().setHours(23, 59, 59, 999)),
+    const API_BASE_URL = 'https://xpressdine-backend.vercel.app'; // As per memory 40a8a55f-d360-49d3-985f-6e98ff5f7f42
+
+    if (!selectedReservation || !selectedReservation.id) {
+      toast({
+        title: "Error",
+        description: "No reservation selected for editing.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const payload = {
+      guestId: selectedReservation.guestId,
+      guestName: selectedReservation.guestName,
+      guestEmail: selectedReservation.guestEmail,
+      date: format(selectedReservation.date, 'yyyy-MM-dd'),
+      time: selectedReservation.time,
+      partySize: selectedReservation.partySize,
+      tableNumber: selectedReservation.tableNumber,
+      status: selectedReservation.status,
+      specialRequests: selectedReservation.specialRequests,
     };
-    //fetchReservations(today);
-    setReservations(updatedReservations);
-    setIsEditReservationOpen(false);
-    
-    toast({
-      title: "Reservation updated",
-      description: "The reservation details have been updated."
-    });
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to update reservation:', responseData);
+        toast({
+          title: "Error Updating Reservation",
+          description: responseData.error || responseData.details || 'An unknown error occurred.',
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Map API response to frontend Reservation type
+      const updatedReservationFromAPI: Reservation = {
+        id: responseData.id,
+        guestId: responseData.guest_id,
+        guestName: responseData.customer_name,
+        guestEmail: responseData.customer_email || '',
+        guestInitials: (responseData.customer_name || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
+        date: new Date(responseData.reservation_time), // Convert ISO string to Date object
+        time: format(new Date(responseData.reservation_time), 'HH:mm'), // Extract time
+        partySize: responseData.party_size,
+        tableNumber: selectedReservation.tableNumber, // Assuming tableNumber itself isn't changed by backend unless explicitly part of response mapping
+        status: responseData.status as Reservation['status'],
+        specialRequests: responseData.notes || undefined,
+        billAmount: responseData.bill_amount || undefined, // If backend sends it
+      };
+
+      // Backend has updated the reservation. Now refresh the list from the backend.
+      fetchReservations(); 
+      setSelectedReservation(null); // Clear selection, or re-select based on fetched data if needed.
+      setIsEditReservationOpen(false);
+
+      toast({
+        title: "Reservation Updated Successfully",
+        description: `Reservation for ${updatedReservationFromAPI.guestName} has been updated.`
+      });
+
+    } catch (error: any) {
+      console.error('Network or unexpected error updating reservation:', error);
+      toast({
+        title: "Update Failed",
+        description: error.message || 'A network error occurred. Please try again.',
+        variant: "destructive"
+      });
+      // Keep dialog open for user to retry or check details
+    }
   };
 
   const handleBillConfirm = () => {
@@ -484,17 +754,68 @@ export default function Reservations() {
                   <DialogTitle>Create New Reservation</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="reservation-guest">Guest</Label>
+                  <div className="space-y-2 relative">
+                    <Label htmlFor="reservation-guest-search">Guest</Label>
                     <Input 
-                      id="reservation-guest" 
-                      placeholder="Guest ID or search..." 
-                      value={newReservation.guestId}
-                      onChange={(e) => setNewReservation({...newReservation, guestId: e.target.value})}
+                      id="reservation-guest-search" 
+                      placeholder="Search guest by name, email, or phone..." 
+                      value={guestSearchTerm || newReservation.guestName} // Display search term or selected guest name
+                      onChange={(e) => {
+                        const searchTermValue = e.target.value;
+                        setGuestSearchTerm(searchTermValue);
+                        // Clear guestId and guestEmail if user is typing/modifying, keep guestName for display
+                        setNewReservation(prev => ({ ...prev, guestName: searchTermValue, guestId: '', guestEmail: '' })); 
+                        fetchGuestSuggestions(searchTermValue);
+                      }}
+                      onFocus={() => { // Clear previous selection if user focuses to search again
+                        if (newReservation.guestId) {
+                          setNewReservation(prev => ({ ...prev, guestName: '', guestId: '', guestEmail: '' }));
+                          setGuestSearchTerm('');
+                          setGuestSearchResults([]);
+                        }
+                      }}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Enter guest ID or search from guest database
-                    </p>
+                    {isGuestSearchLoading && <p className="text-xs text-muted-foreground mt-1">Searching...</p>}
+                    {guestSearchError && <p className="text-xs text-destructive mt-1">Error: {guestSearchError}</p>}
+                    {guestSearchResults.length > 0 && (
+                      <ul className="absolute z-10 w-full bg-background border border-border rounded-md shadow-lg max-h-48 overflow-auto mt-1">
+                        {guestSearchResults.map((guest) => (
+                          <li
+                            key={guest.id}
+                            className="px-3 py-2 hover:bg-accent cursor-pointer"
+                            onClick={() => {
+                              setNewReservation(prev => ({
+                                ...prev,
+                                guestId: guest.id,
+                                guestName: guest.name,
+                                guestEmail: guest.email || '',
+                              }));
+                              setGuestSearchTerm('');
+                              setGuestSearchResults([]);
+                              setGuestSearchError(null);
+                            }}
+                          >
+                            <p className="font-medium">{guest.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {guest.phone && <span>{guest.phone}</span>}
+                              {guest.email && guest.phone && <span className="mx-1">·</span>}
+                              {guest.email && <span>{guest.email}</span>}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!isGuestSearchLoading && guestSearchTerm.length > 0 && guestSearchResults.length === 0 && !guestSearchError && (
+                        <div className="mt-2">
+                          <p className="text-xs text-muted-foreground">No guests found matching "{guestSearchTerm}".</p>
+                          <Button variant="link" size="sm" className="text-primary h-auto p-0 text-xs" onClick={() => setIsCreateGuestDialogOpen(true)}>
+                            Create New Guest
+                          </Button>
+                        </div>
+                    )}
+                    {guestSearchTerm.length === 0 && guestSearchResults.length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">Search for an existing guest by name, email, or phone.</p>
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
@@ -569,6 +890,70 @@ export default function Reservations() {
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
                   <Button onClick={handleAddReservation}>Create Reservation</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Create New Guest Dialog */}
+            <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Create New Guest</DialogTitle>
+                  <DialogDescription>
+                    Add a new guest to the system. This guest will then be selected for the current reservation.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="guest-name" className="text-right">
+                      Name
+                    </Label>
+                    <Input 
+                      id="guest-name" 
+                      value={newGuestDetails.name} 
+                      onChange={(e) => setNewGuestDetails({...newGuestDetails, name: e.target.value})} 
+                      className="col-span-3" 
+                      placeholder="Full Name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="guest-email" className="text-right">
+                      Email
+                    </Label>
+                    <Input 
+                      id="guest-email" 
+                      type="email"
+                      value={newGuestDetails.email} 
+                      onChange={(e) => setNewGuestDetails({...newGuestDetails, email: e.target.value})} 
+                      className="col-span-3" 
+                      placeholder="guest@example.com"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="guest-phone" className="text-right">
+                      Phone
+                    </Label>
+                    <Input 
+                      id="guest-phone" 
+                      value={newGuestDetails.phone} 
+                      onChange={(e) => setNewGuestDetails({...newGuestDetails, phone: e.target.value})} 
+                      className="col-span-3" 
+                      placeholder="(123) 456-7890"
+                    />
+                  </div>
+                  {createGuestError && (
+                    <p className="text-sm text-destructive col-span-4 text-center">{createGuestError}</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => {
+                    setIsCreateGuestDialogOpen(false);
+                    setNewGuestDetails({ name: '', email: '', phone: '' });
+                    setCreateGuestError(null);
+                  }}>Cancel</Button>
+                  <Button onClick={handleCreateGuest} disabled={isCreatingGuest}>
+                    {isCreatingGuest ? 'Creating...' : 'Create Guest'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
