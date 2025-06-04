@@ -56,6 +56,24 @@ export function ActivityChart({ title, data }: ActivityChartProps) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 12 }}
+                tickFormatter={(value) => {
+                  // If the value is a valid date, format it nicely
+                  if (value && typeof value === 'string') {
+                    // Check if it's a month abbreviation (3 letters)
+                    if (/^[A-Za-z]{3}$/.test(value)) {
+                      return value;
+                    }
+                    // Check if it's a day of week (3 letters)
+                    if (['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].includes(value)) {
+                      return value;
+                    }
+                    // Check if it's a time (e.g., '8 AM')
+                    if (/^\d{1,2} [AP]M$/.test(value)) {
+                      return value;
+                    }
+                  }
+                  return value || '';
+                }}
               />
               <YAxis 
                 axisLine={false}

@@ -119,7 +119,7 @@ export function ReservationsList() {
           <p>No reservations for today.</p>
         ) : (
           <div className="space-y-4">
-            {reservations.map((reservation) => (
+            {reservations.slice(0, 8).map((reservation) => (
               <div 
                 key={reservation.id}
                 className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
@@ -150,6 +150,16 @@ export function ReservationsList() {
                 </div>
               </div>
             ))}
+            {reservations.length > 8 && (
+              <div className="pt-2 text-center">
+                <button 
+                  onClick={() => navigate('/reservations?filter=today')}
+                  className="text-sm text-brand-orange font-medium hover:underline"
+                >
+                  View All {reservations.length} Reservations
+                </button>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

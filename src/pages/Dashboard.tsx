@@ -198,14 +198,15 @@ export default function Dashboard() {
           try {
             // Map the API response to the expected format with defensive programming
             const formattedData: ActivityChartDataPoint[] = result.data.map((item: any) => {
-              // Ensure values exist with defaults
-              const label = (item && item.label) ? item.label : 'Unknown';
-              const count = (item && typeof item.count === 'number') ? item.count : 0;
+              // Use label if available, otherwise fall back to name
+              const label = item.label || item.name || 'Unknown';
+              const reservations = typeof item.reservations === 'number' ? item.reservations : 0;
+              const revenue = typeof item.revenue === 'number' ? item.revenue : 0;
               
               return {
-                name: label,
-                reservations: count,
-                revenue: count * 45 // Simple revenue estimate based on count
+                name: label,  // Ensure we're using the label as the name for the chart
+                reservations,
+                revenue
               };
             });
             
