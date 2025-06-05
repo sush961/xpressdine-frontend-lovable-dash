@@ -1,11 +1,52 @@
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { useToast } from '@/components/ui/use-toast';
+import { Link, useLocation } from 'react-router-dom';
+import { 
+  Calendar as CalendarIcon, 
+  FileText, 
+  Plus, 
+  Users, 
+  DollarSign
+} from 'lucide-react';
+import { ApiClient } from '@/lib/ApiClient';
+import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { Button } from '@/components/ui/button';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { 
+  Popover, 
+  PopoverContent, 
+  PopoverTrigger 
+} from '@/components/ui/popover';
+import { Input } from '@/components/ui/input';
+import { 
+  Avatar, 
+  AvatarFallback
+} from '@/components/ui/avatar';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 // Get the API base URL from environment variables
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-import { Link, useLocation } from 'react-router-dom';
-import { Calendar, Filter, FileText, Plus, Users, DollarSign } from 'lucide-react';
-import { ApiClient } from '../lib/ApiClient'; // Added ApiClient import
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xpressdine-backend.vercel.app';
+
+// Fix for TypeScript error
+declare global {
+  interface Window {
+    __ENV: {
+      VITE_API_BASE_URL: string;
+    };
+  }
+}
+
+type DateFilterType = 'today' | 'tomorrow' | 'this-week' | 'next-week' | 'this-month' | 'custom' | 'week' | 'month';
 
 // Interface for table data from the API
 interface Table {
@@ -24,41 +65,6 @@ const getTableName = (table: Table | string | undefined): string => {
   if (typeof table === 'string') return table; // Fallback if we only have an ID
   return table.name || `T${table.number}`;
 };
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Label } from '@/components/ui/label';
-import { useToast } from '@/components/ui/use-toast';
-
-// Interface for the raw data from the backend
-interface BackendReservation {
-  id: string;
-  guest_id: string;
-  customer_name: string;
-  customer_email?: string | null;
-  date: string; // YYYY-MM-DD string from DB
-  time: string; // HH:MM string from DB
-  reservation_time: string; // Full ISO timestamp string
-  party_size: number;
-  table_id: string; // UUID of the table
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no-show';
-  notes?: string | null;
-  total_amount?: number | null;
-  // Other fields like created_at, restaurant_id etc. will also be present from 'select *'
-}
 
 // Updated frontend Reservation interface
 interface Reservation {
@@ -98,15 +104,8 @@ function debounce<F extends (...args: unknown[]) => unknown>(func: F, waitFor: n
   return debounced as (...args: Parameters<F>) => ReturnType<F>;
 }
 
-// Helper function to create a date for today with a specific time
-const todayAtHour = (hours: number, minutes: number) => {
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-};
-
 // Helper to get initials
-const getInitials = (name: string = '') => {
+const getInitials = (name: string = ''): string => {
   return name
     .split(' ')
     .map(n => n[0])
@@ -114,11 +113,7 @@ const getInitials = (name: string = '') => {
     .toUpperCase();
 };
 
-
-
-type DateFilterType = 'today' | 'week' | 'month' | 'custom';
-
-export default function Reservations() {
+export default function Reservations(): JSX.Element {
   // Calculate 'today' once per component mount, memoized
   const today = useMemo(() => new Date(), []);
   // Defensive UI before any logic or hooks
@@ -129,7 +124,10 @@ export default function Reservations() {
   const { toast } = useToast();
 
   // Date and filter states
-  const [dateRange, setDateRange] = useState({
+  const [dateRange, setDateRange] = useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+  }>({
     from: new Date(),
     to: new Date()
   });
@@ -151,7 +149,6 @@ export default function Reservations() {
   
   // Current selection states
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
-  const [currentReservation, setCurrentReservation] = useState<Reservation | null>(null);
   const [currentReservationForBill, setCurrentReservationForBill] = useState<Reservation | null>(null);
   const [currentBillAmount, setCurrentBillAmount] = useState<string>('');
   
@@ -183,19 +180,33 @@ export default function Reservations() {
     specialRequests: ''
   });
 
-
   // Fetch reservations from API
-  const fetchReservations = useCallback(async () => {
+  const fetchReservations = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reservations`);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
       
-      const transformedData: Reservation[] = data.map((item: any) => ({
+      interface ApiReservationItem {
+        id: string;
+        guestId?: string;
+        name: string;
+        guestEmail?: string;
+        guestInitials?: string;
+        date: string;
+        time: string;
+        guests: number;
+        tableId?: string;
+        status: string;
+        specialRequests?: string;
+        billAmount?: number;
+      }
+      
+      const transformedData: Reservation[] = data.map((item: ApiReservationItem) => ({
         id: item.id,
         guestId: item.guestId || '',
         guestName: item.name,
@@ -207,40 +218,46 @@ export default function Reservations() {
               return new Date(item.date);
             } catch (e) {
               console.error('Invalid date format from API:', item.date, e);
-              return null;
+              return new Date();
             }
           }
-          return null;
+          return new Date();
         })(),
         time: item.time,
         partySize: item.guests,
         tableId: item.tableId || '',
-        status: item.status,
+        status: item.status as Reservation['status'],
         specialRequests: item.specialRequests || '',
         billAmount: item.billAmount
       }));
 
       setReservations(transformedData);
       setFilteredReservations(transformedData);
-    } catch (err: any) {
-      console.error("Failed to fetch reservations:", err);
-      setError(`Failed to fetch reservations: ${err.message}`);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Failed to fetch reservations:", error);
+      setError(`Failed to fetch reservations: ${error.message}`);
       toast({
         title: "Error Fetching Reservations",
-        description: err.message,
+        description: error.message,
         variant: "destructive"
       });
       setReservations([]);
     } finally {
       setIsLoading(false);
     }
-  }, [toast, setReservations, setFilteredReservations, setIsLoading, setError]);
+  }, [toast]);
 
   // Update reservation status
-  const performUpdateReservationStatus = async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number) => {
+  const performUpdateReservationStatus = useCallback(async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number): Promise<void> => {
     if (!selectedReservation) return;
 
-    const payload: any = { status };
+    interface UpdatePayload {
+      status: string;
+      billAmount?: number;
+    }
+
+    const payload: UpdatePayload = { status };
     if (status === 'completed') {
       if (billAmount === undefined || isNaN(billAmount) || billAmount <= 0) {
         toast({
@@ -254,7 +271,7 @@ export default function Reservations() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -274,22 +291,23 @@ export default function Reservations() {
       setCurrentBillAmount('');
       setSelectedReservation(null);
       fetchReservations();
-    } catch (err: any) {
-      console.error("Failed to update reservation:", err);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Failed to update reservation:", error);
       toast({
         title: "Update Failed",
-        description: err.message || "An unexpected error occurred.",
+        description: error.message || "An unexpected error occurred.",
         variant: "destructive",
       });
     }
-  };
+  }, [selectedReservation, toast, fetchReservations]);
 
   // Function to fetch tables
-  const fetchTables = useCallback(async () => {
+  const fetchTables = useCallback(async (): Promise<void> => {
     setIsTablesLoading(true);
     setTablesError(null);
     try {
-      const response = await fetch('https://xpressdine-backend.vercel.app/api/tables');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/tables`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -311,33 +329,36 @@ export default function Reservations() {
     fetchTables();
   }, [fetchReservations, fetchTables]);
 
-
-
-  const handleCreateGuest = async () => {
+  const handleCreateGuest = async (): Promise<void> => {
     if (!newGuestDetails.name.trim()) {
       setCreateGuestError("Guest name is required.");
       return;
     }
-    // Optional: Add more validation for email or phone if needed
 
     setIsCreatingGuest(true);
     setCreateGuestError(null);
-    const API_BASE_URL = 'https://xpressdine-backend.vercel.app';
-
     try {
-      const response = await fetch(`${API_BASE_URL}/api/customers`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           name: newGuestDetails.name,
-          email: newGuestDetails.email || null, // Send null if empty, backend might handle it
-          phone: newGuestDetails.phone || null, // Send null if empty
+          email: newGuestDetails.email || null,
+          phone: newGuestDetails.phone || null,
         }),
       });
 
-      const responseData = await response.json();
+      interface CreateGuestResponse {
+        id: string;
+        name: string;
+        email?: string;
+        error?: string;
+        message?: string;
+      }
+
+      const responseData = await response.json() as CreateGuestResponse;
 
       if (!response.ok) {
         console.error('Failed to create guest:', responseData);
@@ -346,24 +367,22 @@ export default function Reservations() {
         return;
       }
 
-      // Guest created successfully
       toast({
         title: "Guest Created Successfully",
         description: `${responseData.name} has been added to the system.`
       });
 
-      // Update reservation form with new guest details
       setNewReservation(prev => ({
         ...prev,
         guestId: responseData.id,
         guestName: responseData.name,
         guestEmail: responseData.email || '',
       }));
-      setGuestSearchTerm(responseData.name); // Pre-fill search with new guest's name
-      setGuestSearchResults([]); // Clear previous search results
+      setGuestSearchTerm(responseData.name);
+      setGuestSearchResults([]);
 
       setIsCreateGuestDialogOpen(false);
-      setNewGuestDetails({ name: '', email: '', phone: '' }); // Reset form
+      setNewGuestDetails({ name: '', email: '', phone: '' });
       setIsCreatingGuest(false);
 
     } catch (error: unknown) {
@@ -379,8 +398,8 @@ export default function Reservations() {
     }
   };
 
-  const rawFetchGuestSuggestions = useCallback(async (searchTerm: string) => {
-    if (searchTerm.length < 2) { // Minimum characters to trigger search
+  const rawFetchGuestSuggestions = useCallback(async (searchTerm: string): Promise<void> => {
+    if (searchTerm.length < 2) {
       setGuestSearchResults([]);
       return;
     }
@@ -388,7 +407,6 @@ export default function Reservations() {
     setGuestSearchError(null);
     try {
       const path = `/api/customers?search=${encodeURIComponent(searchTerm)}`;
-      // Assuming ApiClient.get returns an object with a 'data' property which is an array of CustomerSearchResult
       const responseData = await ApiClient.get<{ data: CustomerSearchResult[] }>(path);
       setGuestSearchResults(responseData.data || []);
     } catch (error: unknown) {
@@ -405,15 +423,13 @@ export default function Reservations() {
       setGuestSearchResults([]);
     }
     setIsGuestSearchLoading(false);
-  }, [setGuestSearchResults, setIsGuestSearchLoading, setGuestSearchError]);
+  }, []);
 
   const fetchGuestSuggestions = useMemo(
     () => debounce(rawFetchGuestSuggestions, 300),
     [rawFetchGuestSuggestions]
   );
 
-
-  
   // Find reservation by ID if specified in query params
   useEffect(() => {
     if (reservationIdFromQuery) {
@@ -474,6 +490,61 @@ export default function Reservations() {
     setFilteredReservations(filtered);
   }, [dateFilter, dateRange, statusFilter, guestIdFromQuery, reservations, today]);
 
+  const handleBillConfirm = useCallback((): void => {
+    if (!currentBillAmount.trim() || isNaN(Number(currentBillAmount))) {
+      toast({
+        title: "Invalid amount",
+        description: "Please enter a valid bill amount.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (currentReservationForBill) {
+      performUpdateReservationStatus('completed', Number(currentBillAmount));
+    } else {
+      toast({
+        title: "Error",
+        description: "No reservation selected for billing.",
+        variant: "destructive"
+      });
+    }
+    setBillAmountDialogOpen(false);
+  }, [currentBillAmount, toast, performUpdateReservationStatus, currentReservationForBill]);
+
+  const handleExport = useCallback((): void => {
+    const headers = ['ID', 'Guest', 'Date', 'Time', 'Party Size', 'Table', 'Status', 'Bill Amount'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredReservations.map(res => [
+        res.id,
+        res.guestName,
+        format(res.date, 'yyyy-MM-dd'),
+        res.time,
+        res.partySize,
+        res.tableId,
+        res.status,
+        res.billAmount || ''
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', 'reservations_export.csv');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    toast({
+      title: "Export successful",
+      description: "Reservations data has been exported to CSV."
+    });
+    
+    setIsExportDialogOpen(false);
+  }, [filteredReservations, toast]);
+
   // Defensive UI before any logic or hooks
   if (isLoading) {
     return <div>Loading reservations...</div>;
@@ -485,44 +556,29 @@ export default function Reservations() {
     return <div>Failed to Load Reservations: Data is not an array.</div>;
   }
 
-
-  const handleReservationSelect = (reservation: Reservation) => {
+  const handleReservationSelect = (reservation: Reservation): void => {
     setSelectedReservation(reservation);
   };
 
-  const handleBackClick = () => {
+  const handleBackClick = (): void => {
     setSelectedReservation(null);
-    // Clear the URL param if it exists
     if (reservationIdFromQuery) {
       window.history.replaceState(null, '', '/reservations');
     }
   };
 
-  const handleStatusChange = (status: 'confirmed' | 'pending' | 'cancelled' | 'completed') => {
+  const handleStatusChange = (status: 'confirmed' | 'pending' | 'cancelled' | 'completed'): void => {
     if (!selectedReservation) return;
     
-    // If changing to completed, prompt for bill amount
     if (status === 'completed') {
       setBillAmountDialogOpen(true);
       return;
     }
     
-    updateReservationStatus(status);
+    performUpdateReservationStatus(status);
   };
 
-  const updateReservationStatus = (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number) => {
-    if (!selectedReservation) return;
-    toast({
-      title: "Status updated",
-      description: `Reservation status changed to ${status}.`
-    });
-    
-    setBillAmountDialogOpen(false);
-    setCurrentBillAmount('');
-  };
-
-  const handleAddReservation = async () => {
-    // Basic validation: Ensure a guest is selected if guest search was attempted or if guestId is expected
+  const handleAddReservation = async (): Promise<void> => {
     if (!newReservation.guestId && guestSearchTerm) {
       toast({
         title: "Guest Not Selected",
@@ -532,30 +588,37 @@ export default function Reservations() {
       return;
     }
     if (!newReservation.guestId) {
-        toast({
-            title: "Guest Required",
-            description: "Please search and select a guest for the reservation.",
-            variant: "destructive"
-          });
-        return;
+      toast({
+        title: "Guest Required",
+        description: "Please search and select a guest for the reservation.",
+        variant: "destructive"
+      });
+      return;
     }
 
-    // API Integration for creating reservation
-    const API_BASE_URL = 'https://xpressdine-backend.vercel.app'; // As per memory 40a8a55f-d360-49d3-985f-6e98ff5f7f42
+    const table = tables.find(t => t.id === newReservation.tableId);
+    if (!table) {
+      toast({
+        title: "Invalid Table",
+        description: "Please select a valid table.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     const payload = {
       guestId: newReservation.guestId,
       guestName: newReservation.guestName,
       guestEmail: newReservation.guestEmail,
-      date: format(newReservation.date, 'yyyy-MM-dd'), // Format date for API
+      date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
       partySize: newReservation.partySize,
-      tableId: newReservation.tableId, // Changed from tableNumber to tableId
+      tableNumber: table.number.toString(),
       specialRequests: newReservation.specialRequests,
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reservations`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -575,24 +638,21 @@ export default function Reservations() {
         return;
       }
 
-      // Map API response to frontend Reservation type
       const createdReservation: Reservation = {
         id: responseData.id,
         guestId: responseData.guest_id,
         guestName: responseData.customer_name,
         guestEmail: responseData.customer_email || '',
         guestInitials: (responseData.customer_name || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
-        date: new Date(responseData.reservation_time), // Convert ISO string to Date object
-        time: format(new Date(responseData.reservation_time), 'HH:mm'), // Extract time
+        date: new Date(responseData.reservation_time),
+        time: format(new Date(responseData.reservation_time), 'HH:mm'),
         partySize: responseData.party_size,
-        tableId: responseData.table_id, // Use table_id from backend response 
+        tableId: responseData.table_id,
         status: responseData.status as Reservation['status'],
         specialRequests: responseData.notes || '',
-        // billAmount is not part of creation response
       };
 
-      // setReservations(prevReservations => [...prevReservations, createdReservation]); // Replaced by fetchReservations
-      fetchReservations(); // Refresh the list from the backend
+      fetchReservations();
       setIsAddReservationOpen(false);
 
       toast({
@@ -613,10 +673,9 @@ export default function Reservations() {
         description: errorMessage,
         variant: "destructive"
       });
-      return; // Keep dialog open for user to retry or check details
+      return;
     }
     
-    // Reset the form
     setNewReservation({
       guestId: '',
       guestName: '',
@@ -631,15 +690,14 @@ export default function Reservations() {
     setGuestSearchResults([]);
   };
 
-  const handleEditReservation = async () => {
+  const handleEditReservation = async (): Promise<void> => {
     if (!selectedReservation) return;
     
-    const API_BASE_URL = 'https://xpressdine-backend.vercel.app'; // As per memory 40a8a55f-d360-49d3-985f-6e98ff5f7f42
-
-    if (!selectedReservation || !selectedReservation.id) {
+    const table = tables.find(t => t.id === selectedReservation.tableId);
+    if (!table) {
       toast({
-        title: "Error",
-        description: "No reservation selected for editing.",
+        title: "Invalid Table",
+        description: "Please select a valid table.",
         variant: "destructive"
       });
       return;
@@ -652,13 +710,13 @@ export default function Reservations() {
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
       partySize: selectedReservation.partySize,
-      table_number: selectedReservation.tableId, // Send tableId (as string) as table_number
+      tableNumber: table.number.toString(),
       status: selectedReservation.status,
       specialRequests: selectedReservation.specialRequests,
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -678,30 +736,13 @@ export default function Reservations() {
         return;
       }
 
-      // Map API response to frontend Reservation type
-      const updatedReservationFromAPI: Reservation = {
-        id: responseData.id,
-        guestId: responseData.guest_id,
-        guestName: responseData.customer_name,
-        guestEmail: responseData.customer_email || '',
-        guestInitials: (responseData.customer_name || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
-        date: new Date(responseData.reservation_time), // Convert ISO string to Date object
-        time: format(new Date(responseData.reservation_time), 'HH:mm'), // Extract time
-        partySize: responseData.party_size,
-        tableId: responseData.table_id, // Use table_id from backend response
-        status: responseData.status as Reservation['status'],
-        specialRequests: responseData.notes || '',
-        billAmount: responseData.bill_amount || undefined, // If backend sends it
-      };
-
-      // Backend has updated the reservation. Now refresh the list from the backend.
       fetchReservations(); 
-      setSelectedReservation(null); // Clear selection, or re-select based on fetched data if needed.
+      setSelectedReservation(null);
       setIsEditReservationOpen(false);
 
       toast({
         title: "Reservation Updated Successfully",
-        description: `Reservation for ${updatedReservationFromAPI.guestName} has been updated.`
+        description: `Reservation has been updated.`
       });
 
     } catch (error: unknown) {
@@ -717,69 +758,10 @@ export default function Reservations() {
         description: errorMessage,
         variant: "destructive"
       });
-      // Keep dialog open for user to retry or check details
     }
   };
 
-  const handleBillConfirm = useCallback(() => {
-    if (!currentBillAmount.trim() || isNaN(Number(currentBillAmount))) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid bill amount.",
-        variant: "destructive"
-      });
-      return;
-    }
-    // Assuming currentReservationForBill holds the reservation context for this dialog
-    if (currentReservationForBill) {
-        performUpdateReservationStatus('completed', Number(currentBillAmount));
-    } else {
-        toast({
-            title: "Error",
-            description: "No reservation selected for billing.",
-            variant: "destructive"
-        });
-    }
-    setBillAmountDialogOpen(false); // Close dialog after attempting action
-  }, [currentBillAmount, toast, performUpdateReservationStatus, currentReservationForBill, setBillAmountDialogOpen]);
-
-  const handleExport = useCallback(() => {
-    // Mock CSV export functionality
-    const headers = ['ID', 'Guest', 'Date', 'Time', 'Party Size', 'Table', 'Status', 'Bill Amount'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredReservations.map(res => [
-        res.id,
-        res.guestName,
-        format(res.date, 'yyyy-MM-dd'),
-        res.time,
-        res.partySize,
-        res.tableId,
-        res.status,
-        res.billAmount || ''
-      ].join(','))
-    ].join('\n');
-    
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.setAttribute('hidden', '');
-    a.setAttribute('href', url);
-    a.setAttribute('download', 'reservations_export.csv');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    toast({
-      title: "Export successful",
-      description: "Reservations data has been exported to CSV."
-    });
-    
-    setIsExportDialogOpen(false);
-  }, [filteredReservations, toast, setIsExportDialogOpen, format]);
-
-  const getStatusBadgeClass = (status: string) => {
+  const getStatusBadgeClass = (status: string): string => {
     switch (status) {
       case 'confirmed':
         return 'bg-blue-100 text-blue-800';
@@ -794,7 +776,7 @@ export default function Reservations() {
     }
   };
 
-  const getDateFilterLabel = () => {
+  const getDateFilterLabel = (): React.ReactNode => {
     switch (dateFilter) {
       case 'today':
         return 'Today';
@@ -841,10 +823,8 @@ export default function Reservations() {
                   <DialogTitle>Create New Reservation</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-
-                  
                   <div className="grid grid-cols-2 gap-4">
-                    {/* <div className="space-y-2">
+                    <div className="space-y-2">
                       <Label htmlFor="reservation-date">Date</Label>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -853,7 +833,7 @@ export default function Reservations() {
                             variant="outline"
                             className="w-full justify-start text-left font-normal"
                           >
-                            <Calendar className="mr-2 h-4 w-4" />
+                            <CalendarIcon className="mr-2 h-4 w-4" />
                             {newReservation.date ? format(newReservation.date, "PPP") : <span>Pick a date</span>}
                           </Button>
                         </PopoverTrigger>
@@ -866,9 +846,9 @@ export default function Reservations() {
                           />
                         </PopoverContent>
                       </Popover>
-                    </div> */}
+                    </div>
                     
-                    {/* <div className="space-y-2">
+                    <div className="space-y-2">
                       <Label htmlFor="reservation-time">Time</Label>
                       <Input 
                         id="reservation-time" 
@@ -876,11 +856,11 @@ export default function Reservations() {
                         value={newReservation.time}
                         onChange={(e) => setNewReservation({...newReservation, time: e.target.value})}
                       />
-                    </div> */}
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    {/* <div className="space-y-2">
+                    <div className="space-y-2">
                       <Label htmlFor="reservation-party">Party Size</Label>
                       <Input 
                         id="reservation-party" 
@@ -889,7 +869,7 @@ export default function Reservations() {
                         value={newReservation.partySize}
                         onChange={(e) => setNewReservation({...newReservation, partySize: parseInt(e.target.value) || 1})}
                       />
-                    </div> */}
+                    </div>
                     
                     <div className="space-y-2">
                       <Label htmlFor="reservation-table">Table</Label>
@@ -934,72 +914,8 @@ export default function Reservations() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div> {/* Closes action buttons div (from line 739) */}
-        </div> {/* Closes header row div (from line 737) */}
-
-            {/* Create New Guest Dialog */}
-            {/* <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Create New Guest</DialogTitle>
-                  <DialogDescription>
-                    Add a new guest to the system. This guest will then be selected for the current reservation.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="guest-name" className="text-right">
-                      Name
-                    </Label>
-                    <Input 
-                      id="guest-name" 
-                      value={newGuestDetails.name} 
-                      onChange={(e) => setNewGuestDetails({...newGuestDetails, name: e.target.value})} 
-                      className="col-span-3" 
-                      placeholder="Full Name"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="guest-email" className="text-right">
-                      Email
-                    </Label>
-                    <Input 
-                      id="guest-email" 
-                      type="email"
-                      value={newGuestDetails.email} 
-                      onChange={(e) => setNewGuestDetails({...newGuestDetails, email: e.target.value})} 
-                      className="col-span-3" 
-                      placeholder="guest@example.com"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="guest-phone" className="text-right">
-                      Phone
-                    </Label>
-                    <Input 
-                      id="guest-phone" 
-                      value={newGuestDetails.phone} 
-                      onChange={(e) => setNewGuestDetails({...newGuestDetails, phone: e.target.value})} 
-                      className="col-span-3" 
-                      placeholder="(123) 456-7890"
-                    />
-                  </div>
-                  {createGuestError && (
-                    <p className="text-sm text-destructive col-span-4 text-center">{createGuestError}</p>
-                  )}
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => {
-                    setIsCreateGuestDialogOpen(false);
-                    setNewGuestDetails({ name: '', email: '', phone: '' });
-                    setCreateGuestError(null);
-                  }}>Cancel</Button>
-                  <Button onClick={handleCreateGuest} disabled={isCreatingGuest}>
-                    {isCreatingGuest ? 'Creating...' : 'Create Guest'}
-                  </button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog> */}
+          </div>
+        </div>
 
         {!selectedReservation ? (
           <>
@@ -1010,7 +926,7 @@ export default function Reservations() {
                     variant="outline"
                     className="justify-start text-left font-normal"
                   >
-                    <Calendar className="mr-2 h-4 w-4" />
+                    <CalendarIcon className="mr-2 h-4 w-4" />
                     {getDateFilterLabel()}
                   </Button>
                 </PopoverTrigger>
@@ -1053,90 +969,30 @@ export default function Reservations() {
                     {dateFilter === 'custom' && (
                       <div className="space-y-2">
                         <h4 className="font-medium text-sm">Custom range</h4>
-                        <CalendarComponent
-                          mode="range"
-                          selected={{
-                            from: dateRange.from,
-                            to: dateRange.to
-                          }}
-                          onSelect={(range) => {
-                            if (range?.from && range?.to) {
-                              setDateRange({
-                                from: range.from,
-                                to: range.to
-                              });
-                            }
-                          }}
-                          numberOfMonths={2}
-                          className="p-3 pointer-events-auto"
-                        />
+                        <div className="p-3 pointer-events-auto">
+                          <CalendarComponent
+                            mode="range"
+                            selected={{
+                              from: dateRange.from,
+                              to: dateRange.to
+                            }}
+                            onSelect={(range) => {
+                              if (range?.from && range?.to) {
+                                setDateRange({
+                                  from: range.from,
+                                  to: range.to
+                                });
+                              }
+                            }}
+                            numberOfMonths={2}
+                            className="rounded-md border"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
                 </PopoverContent>
               </Popover>
-
-              {/* <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline">
-                    <Filter className="mr-2 h-4 w-4" />
-                    {statusFilter ? `Status: ${statusFilter}` : 'Filter by status'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[200px] p-0">
-                  <div className="p-2 space-y-1">
-                    <Button 
-                      variant="ghost" 
-                      className="w-full justify-start"
-                      onClick={() => setStatusFilter(null)}
-                    >
-                      All statuses
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      className="w-full justify-start"
-                      onClick={() => setStatusFilter('confirmed')}
-                    >
-                      Confirmed
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      className="w-full justify-start"
-                      onClick={() => setStatusFilter('pending')}
-                    >
-                      Pending
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      className="w-full justify-start"
-                      onClick={() => setStatusFilter('cancelled')}
-                    >
-                      Cancelled
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      className="w-full justify-start"
-                      onClick={() => setStatusFilter('completed')}
-                    >
-                      Completed
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover> */}
-
-              {guestIdFromQuery && (
-                {/* <div className="flex items-center gap-2 ml-2">
-                  <span className="text-muted-foreground">Filtered by guest</span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 px-2" 
-                    onClick={() => window.location.href = '/reservations'}
-                  >
-                    Clear filter
-                  </button>
-                </div> */}
-              )}
             </div>
 
             <div className="rounded-md border">
@@ -1313,7 +1169,7 @@ export default function Reservations() {
                         (Seats: {tables.find(t => t.id === selectedReservation.tableId)?.capacity})
                       </>
                     ) : (
-                      getTableName(selectedReservation.tableId) // Fallback if table not found in state
+                      getTableName(selectedReservation.tableId)
                     )}
                   </p>
                 </div>
@@ -1330,9 +1186,9 @@ export default function Reservations() {
                   <Button variant="outline">Edit Reservation</Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[600px]">
-                  <div>
-                    <h2>Edit Reservation</h2>
-                  </div>
+                  <DialogHeader>
+                    <DialogTitle>Edit Reservation</DialogTitle>
+                  </DialogHeader>
                   <div className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -1343,7 +1199,7 @@ export default function Reservations() {
                               variant="outline"
                               className="w-full justify-start text-left font-normal"
                             >
-                              <Calendar className="mr-2 h-4 w-4" />
+                              <CalendarIcon className="mr-2 h-4 w-4" />
                               {format(selectedReservation.date, "PPP")}
                             </Button>
                           </PopoverTrigger>
@@ -1428,12 +1284,12 @@ export default function Reservations() {
                       />
                     </div>
                   </div>
-                  <div>
+                  <DialogFooter>
                     <Button variant="outline" onClick={() => setIsEditReservationOpen(false)}>Cancel</Button>
                     <Button onClick={handleEditReservation}>Save Changes</Button>
-                  </div>
-              </DialogContent>
-            </Dialog>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
               <Link to={`/guests?id=${selectedReservation.guestId}`}>
                 <Button variant="outline" className="bg-white">
                   View Guest Profile
@@ -1458,7 +1314,6 @@ export default function Reservations() {
           </div>
         )}
         
-        {/* Bill Amount Dialog */}
         <Dialog open={billAmountDialogOpen} onOpenChange={setBillAmountDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
@@ -1488,7 +1343,6 @@ export default function Reservations() {
           </DialogContent>
         </Dialog>
 
-        {/* Export Dialog */}
         <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
@@ -1518,6 +1372,6 @@ export default function Reservations() {
           </DialogContent>
         </Dialog>
       </div>
-      </DashboardLayout>
+    </DashboardLayout>
   );
 }
