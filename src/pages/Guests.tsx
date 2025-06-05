@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, FileText, Pencil } from 'lucide-react';
+import { Search, Plus, FileText, Pencil, Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -127,23 +127,35 @@ export default function Guests() {
     try {
       console.log('[Guests.tsx] Attempting to add new guest:', newGuest);
       const payload = {
-        name: newGuest.name,
-        email: newGuest.email || null, // Ensure email is null if empty, not an empty string
-        phone: newGuest.phone,
+        name: newGuest.name.trim(),
+        email: newGuest.email?.trim() || null,
+        phone: newGuest.phone.trim(),
+        notes: '' // Add empty notes field to match backend expectations
       };
+      
       console.log('[Guests.tsx] Making POST request with payload:', payload);
 
-      // Type assertion for the expected response structure from /api/customers POST
-      const result = await ApiClient.post<{ data: Guest, error: unknown | null }>('/customers', payload);
-      console.log('[Guests.tsx] Response data from ApiClient.post:', result);
+      // Make the API request
+      const result = await ApiClient.post<{ data: Guest, error: string | null }>('/customers', payload);
+      console.log('[Guests.tsx] Response from API:', result);
 
       if (result.error) {
-        // The ApiClient might throw an error for non-ok status, 
-        // but if it doesn't and returns an error object (e.g. for 409 conflict)
-        throw new Error(result.error?.message || result.error || 'Failed to add guest');
+        // Handle specific error cases
+        const errorMessage = typeof result.error === 'string' ? result.error : 'An error occurred';
+        if (errorMessage.includes('phone number already exists')) {
+          toast({
+            title: "Guest Updated",
+            description: "A guest with this phone number already exists. The existing guest has been updated.",
+          });
+        } else {
+          throw new Error(errorMessage);
+        }
+      } else {
+        toast({
+          title: "Success",
+          description: "Guest added successfully",
+        });
       }
-      
-      console.log('[Guests.tsx] Successfully added guest:', result.data);
       
       // Refresh the guests list
       await fetchGuests();
@@ -152,16 +164,11 @@ export default function Guests() {
       setNewGuest({ name: '', email: '', phone: '' });
       setIsAddGuestOpen(false);
       
-      toast({
-        title: "Success",
-        description: "Guest added successfully",
-      });
-      
     } catch (error) {
       console.error('Failed to add guest:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : 'Failed to add guest',
+        description: error instanceof Error ? error.message : 'Failed to process guest',
         variant: "destructive"
       });
     }
@@ -174,19 +181,34 @@ export default function Guests() {
     
     console.log('[Guests.tsx] Attempting to edit guest:', selectedGuest);
     try {
-      // Ensure we only send necessary data, backend might not expect 'initials'
+      // Prepare the data to update
       const { initials, ...guestDataToUpdate } = selectedGuest;
-      const result = await ApiClient.put<{ data: Guest, error: unknown | null }>(
+      const payload = {
+        name: guestDataToUpdate.name.trim(),
+        email: guestDataToUpdate.email?.trim() || null,
+        phone: guestDataToUpdate.phone.trim(),
+        notes: '' // Add empty notes field to match backend expectations
+      };
+      
+      // Make the API request
+      const result = await ApiClient.put<{ data: Guest, error: string | null }>(
         `/customers/${guestDataToUpdate.id}`,
-        guestDataToUpdate
+        payload
       );
-      console.log('[Guests.tsx] Response data from ApiClient.put:', result);
+      
+      console.log('[Guests.tsx] Response from API:', result);
 
       if (result.error) {
-        throw new Error(result.error?.message || result.error || 'Failed to update guest');
+        // Handle specific error cases
+        const errorMessage = typeof result.error === 'string' ? result.error : 'Failed to update guest';
+        if (errorMessage.includes('phone number already exists')) {
+          throw new Error('A guest with this phone number already exists');
+        } else {
+          throw new Error(errorMessage);
+        }
       }
       
-      console.log('[Guests.tsx] Successfully updated guest:', result.data);
+      // If we get here, the update was successful
       await fetchGuests(); // Refresh list
       setIsEditGuestOpen(false);
       
@@ -222,7 +244,15 @@ export default function Guests() {
       console.log('[Guests.tsx] Response data from ApiClient.post (import):', result);
 
       if (result.error || (result.success === false)) {
-         throw new Error(result.error?.message || result.error || result.message || 'Failed to import guests');
+        const errorMessage = 
+          (typeof result.error === 'object' && result.error !== null && 'message' in result.error) 
+            ? String((result.error as { message?: unknown }).message) 
+            : typeof result.error === 'string' 
+              ? result.error 
+              : typeof result.message === 'string' 
+                ? result.message 
+                : 'Failed to import guests';
+        throw new Error(errorMessage);
       }
       
       console.log('[Guests.tsx] Successfully imported guests.');
@@ -251,6 +281,40 @@ export default function Guests() {
     (guest.email && guest.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
     guest.phone.includes(searchTerm)
   );
+
+  // Handle deleting a guest
+  const handleDeleteGuest = async (guestId: string) => {
+    if (!window.confirm('Are you sure you want to delete this guest? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      console.log('[Guests.tsx] Attempting to delete guest:', guestId);
+      
+      const result = await ApiClient.delete<{ error: string | null }>(`/customers/${guestId}`);
+      console.log('[Guests.tsx] Delete response:', result);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      // Refresh the guests list
+      await fetchGuests();
+      
+      toast({
+        title: "Success",
+        description: "Guest deleted successfully",
+      });
+      
+    } catch (error) {
+      console.error('Failed to delete guest:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Failed to delete guest',
+        variant: "destructive"
+      });
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -310,19 +374,33 @@ export default function Guests() {
                     {guest.email} • {guest.phone}
                   </p>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="edit-button opacity-0 group-hover:opacity-100 h-8 w-8"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedGuest(guest);
-                    setIsEditGuestOpen(true);
-                  }}
-                >
-                  <Pencil className="h-4 w-4" />
-                  <span className="sr-only">Edit</span>
-                </Button>
+                <div className="flex space-x-1">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="edit-button opacity-0 group-hover:opacity-100 h-8 w-8"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedGuest(guest);
+                      setIsEditGuestOpen(true);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    <span className="sr-only">Edit</span>
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="delete-button opacity-0 group-hover:opacity-100 h-8 w-8 text-destructive hover:text-destructive/80"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await handleDeleteGuest(guest.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete</span>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

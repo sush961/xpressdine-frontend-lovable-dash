@@ -1,5 +1,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+
+// Get the API base URL from environment variables
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 import { Link, useLocation } from 'react-router-dom';
 import { Calendar, Filter, FileText, Plus, Users, DollarSign } from 'lucide-react';
 import { ApiClient } from '../lib/ApiClient'; // Added ApiClient import
@@ -119,81 +122,167 @@ export default function Reservations() {
   // Calculate 'today' once per component mount, memoized
   const today = useMemo(() => new Date(), []);
   // Defensive UI before any logic or hooks
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const guestIdFromQuery = queryParams.get('guest');
   const reservationIdFromQuery = queryParams.get('id');
   const { toast } = useToast();
 
-  const [reservations, setReservations] = useState<Reservation[]>([]); // Initialize with empty array
+  // Date and filter states
   const [dateRange, setDateRange] = useState({
     from: new Date(),
     to: new Date()
   });
   const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
-  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  
+  // Reservation data states
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Dialog and modal states
   const [isAddReservationOpen, setIsAddReservationOpen] = useState(false);
   const [isEditReservationOpen, setIsEditReservationOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
+  const [isCreateGuestDialogOpen, setIsCreateGuestDialogOpen] = useState(false);
+  
+  // Current selection states
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [currentReservation, setCurrentReservation] = useState<Reservation | null>(null);
   const [currentReservationForBill, setCurrentReservationForBill] = useState<Reservation | null>(null);
   const [currentBillAmount, setCurrentBillAmount] = useState<string>('');
-  const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  
+  // Guest related states
+  const [guestSearchTerm, setGuestSearchTerm] = useState('');
+  const [guestSearchResults, setGuestSearchResults] = useState<CustomerSearchResult[]>([]);
+  const [isGuestSearchLoading, setIsGuestSearchLoading] = useState(false);
+  const [guestSearchError, setGuestSearchError] = useState<string | null>(null);
+  
+  // New guest creation states
+  const [newGuestDetails, setNewGuestDetails] = useState({ name: '', email: '', phone: '' });
+  const [isCreatingGuest, setIsCreatingGuest] = useState(false);
+  const [createGuestError, setCreateGuestError] = useState<string | null>(null);
+  
+  // Table states
   const [tables, setTables] = useState<Table[]>([]);
-  const [isTablesLoading, setIsTablesLoading] = useState(false);
+  const [isTablesLoading, setIsTablesLoading] = useState(true);
   const [tablesError, setTablesError] = useState<string | null>(null);
+  
+  // New reservation form state
+  const [newReservation, setNewReservation] = useState({
+    guestId: guestIdFromQuery || '',
+    guestName: '', 
+    guestEmail: '',
+    date: new Date(),
+    time: '19:00',
+    partySize: 2,
+    tableId: '',
+    specialRequests: ''
+  });
 
 
   // Fetch reservations from API
   const fetchReservations = useCallback(async () => {
-    console.log('[Reservations.tsx] Starting to fetch reservations...');
-    setLoading(true);
-    setFetchError(null);
+    setIsLoading(true);
+    setError(null);
     try {
-      const fetchedData = await ApiClient.get<BackendReservation[]>('/reservations');
-      console.log('[Reservations.tsx] Response data from ApiClient.get /reservations:', fetchedData);
-
-      if (!Array.isArray(fetchedData)) {
-        throw new Error('Invalid data format received for reservations.');
+      const response = await fetch(`${API_BASE_URL}/api/reservations`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      const formattedReservations = fetchedData.map((res: BackendReservation) => ({
-        id: res.id,
-        guestId: res.guest_id,
-        guestName: res.customer_name,
-        guestEmail: res.customer_email || undefined,
-        guestInitials: getInitials(res.customer_name),
-        date: new Date(res.date + 'T00:00:00'), // Assuming res.date is YYYY-MM-DD, parse as local midnight
-        time: res.time, // HH:MM string
-        partySize: res.party_size,
-        tableId: res.table_id, // Store table_id
-        status: res.status,
-        specialRequests: res.notes || undefined,
-        billAmount: res.total_amount || undefined,
-      }));
+      const data = await response.json();
       
-      console.log('[Reservations.tsx] Formatted reservations:', formattedReservations);
-      setReservations(formattedReservations);
-      // setFilteredReservations(formattedReservations); // Filtering will be applied later
-    } catch (error) {
-      console.error('Failed to fetch reservations:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch reservations';
-      setFetchError(errorMessage);
+      const transformedData: Reservation[] = data.map((item: any) => ({
+        id: item.id,
+        guestId: item.guestId || '',
+        guestName: item.name,
+        guestEmail: item.guestEmail || '',
+        guestInitials: item.guestInitials || (item.name ? getInitials(item.name) : ''),
+        date: (() => {
+          if (item.date && typeof item.date === 'string' && item.date.trim() !== '') {
+            try {
+              return new Date(item.date);
+            } catch (e) {
+              console.error('Invalid date format from API:', item.date, e);
+              return null;
+            }
+          }
+          return null;
+        })(),
+        time: item.time,
+        partySize: item.guests,
+        tableId: item.tableId || '',
+        status: item.status,
+        specialRequests: item.specialRequests || '',
+        billAmount: item.billAmount
+      }));
+
+      setReservations(transformedData);
+      setFilteredReservations(transformedData);
+    } catch (err: any) {
+      console.error("Failed to fetch reservations:", err);
+      setError(`Failed to fetch reservations: ${err.message}`);
       toast({
         title: "Error Fetching Reservations",
-        description: errorMessage,
+        description: err.message,
         variant: "destructive"
       });
-      setReservations([]); // Clear reservations on error
-      // setFilteredReservations([]);
+      setReservations([]);
     } finally {
-      console.log('[Reservations.tsx] Finished fetching reservations attempt.');
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, setReservations, setFilteredReservations, setIsLoading, setError]);
+
+  // Update reservation status
+  const performUpdateReservationStatus = async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number) => {
+    if (!selectedReservation) return;
+
+    const payload: any = { status };
+    if (status === 'completed') {
+      if (billAmount === undefined || isNaN(billAmount) || billAmount <= 0) {
+        toast({
+          title: "Invalid Bill Amount",
+          description: "A valid bill amount is required to complete a reservation.",
+          variant: "destructive",
+        });
+        return;
+      }
+      payload.billAmount = billAmount;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to update reservation status.' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      toast({
+        title: "Reservation Updated",
+        description: `Reservation status successfully set to ${status}.`,
+      });
+      
+      setBillAmountDialogOpen(false);
+      setCurrentBillAmount('');
+      setSelectedReservation(null);
+      fetchReservations();
+    } catch (err: any) {
+      console.error("Failed to update reservation:", err);
+      toast({
+        title: "Update Failed",
+        description: err.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Function to fetch tables
   const fetchTables = useCallback(async () => {
@@ -222,32 +311,7 @@ export default function Reservations() {
     fetchTables();
   }, [fetchReservations, fetchTables]);
 
-  const [newReservation, setNewReservation] = useState({
-    guestId: guestIdFromQuery || '',
-    guestName: '', 
-    guestEmail: '', // Added for selected guest's email
-    date: new Date(),
-    time: '19:00',
-    partySize: 2,
-    tableId: '', // Changed from tableNumber to tableId for consistency
-    specialRequests: ''
-  });
-  const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
-  const [currentBillAmount, setCurrentBillAmount] = useState<string>('');
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
-  const [guestSearchTerm, setGuestSearchTerm] = useState('');
-  const [guestSearchResults, setGuestSearchResults] = useState<CustomerSearchResult[]>([]);
-  const [isGuestSearchLoading, setIsGuestSearchLoading] = useState(false);
-  const [guestSearchError, setGuestSearchError] = useState<string | null>(null);
-  
-  // State for tables
-  const [tables, setTables] = useState<Table[]>([]);
-  const [isTablesLoading, setIsTablesLoading] = useState(true);
-  const [tablesError, setTablesError] = useState<string | null>(null);
-  const [isCreateGuestDialogOpen, setIsCreateGuestDialogOpen] = useState(false);
-  const [newGuestDetails, setNewGuestDetails] = useState({ name: '', email: '', phone: '' });
-  const [isCreatingGuest, setIsCreatingGuest] = useState(false);
-  const [createGuestError, setCreateGuestError] = useState<string | null>(null);
+
 
   const handleCreateGuest = async () => {
     if (!newGuestDetails.name.trim()) {
@@ -411,11 +475,11 @@ export default function Reservations() {
   }, [dateFilter, dateRange, statusFilter, guestIdFromQuery, reservations, today]);
 
   // Defensive UI before any logic or hooks
-  if (loading) {
+  if (isLoading) {
     return <div>Loading reservations...</div>;
   }
-  if (fetchError) {
-    return <div>Failed to Load Reservations: {fetchError}</div>;
+  if (error) {
+    return <div>Failed to Load Reservations: {error}</div>;
   }
   if (!Array.isArray(filteredReservations)) {
     return <div>Failed to Load Reservations: Data is not an array.</div>;
@@ -523,7 +587,7 @@ export default function Reservations() {
         partySize: responseData.party_size,
         tableId: responseData.table_id, // Use table_id from backend response 
         status: responseData.status as Reservation['status'],
-        specialRequests: responseData.notes || undefined,
+        specialRequests: responseData.notes || '',
         // billAmount is not part of creation response
       };
 
@@ -626,7 +690,7 @@ export default function Reservations() {
         partySize: responseData.party_size,
         tableId: responseData.table_id, // Use table_id from backend response
         status: responseData.status as Reservation['status'],
-        specialRequests: responseData.notes || undefined,
+        specialRequests: responseData.notes || '',
         billAmount: responseData.bill_amount || undefined, // If backend sends it
       };
 
@@ -657,7 +721,7 @@ export default function Reservations() {
     }
   };
 
-  const handleBillConfirm = () => {
+  const handleBillConfirm = useCallback(() => {
     if (!currentBillAmount.trim() || isNaN(Number(currentBillAmount))) {
       toast({
         title: "Invalid amount",
@@ -666,11 +730,20 @@ export default function Reservations() {
       });
       return;
     }
-    
-    updateReservationStatus('completed', Number(currentBillAmount));
-  };
+    // Assuming currentReservationForBill holds the reservation context for this dialog
+    if (currentReservationForBill) {
+        performUpdateReservationStatus('completed', Number(currentBillAmount));
+    } else {
+        toast({
+            title: "Error",
+            description: "No reservation selected for billing.",
+            variant: "destructive"
+        });
+    }
+    setBillAmountDialogOpen(false); // Close dialog after attempting action
+  }, [currentBillAmount, toast, performUpdateReservationStatus, currentReservationForBill, setBillAmountDialogOpen]);
 
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
     // Mock CSV export functionality
     const headers = ['ID', 'Guest', 'Date', 'Time', 'Party Size', 'Table', 'Status', 'Bill Amount'];
     const csvContent = [
@@ -704,7 +777,7 @@ export default function Reservations() {
     });
     
     setIsExportDialogOpen(false);
-  };
+  }, [filteredReservations, toast, setIsExportDialogOpen, format]);
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
@@ -761,116 +834,54 @@ export default function Reservations() {
                 <Button size="sm" className="flex items-center gap-1">
                   <Plus className="h-4 w-4" />
                   <span className="hidden sm:inline">New Reservation</span>
-                </button>
-              </div>
+                </Button>
+              </DialogTrigger>
               <DialogContent className="sm:max-w-[425px]">
-                <div>
-                  <h2>Create New Reservation</h2>
-                </div>
+                <DialogHeader>
+                  <DialogTitle>Create New Reservation</DialogTitle>
+                </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="space-y-2 relative">
-                    <Label htmlFor="reservation-guest-search">Guest</label>
-                    <Input 
-                      id="reservation-guest-search" 
-                      placeholder="Search guest by name, email, or phone..." 
-                      value={guestSearchTerm || newReservation.guestName} // Display search term or selected guest name
-                      onChange={(e) => {
-                        const searchTermValue = e.target.value;
-                        setGuestSearchTerm(searchTermValue);
-                        // Clear guestId and guestEmail if user is typing/modifying, keep guestName for display
-                        setNewReservation(prev => ({ ...prev, guestName: searchTermValue, guestId: '', guestEmail: '' })); 
-                        fetchGuestSuggestions(searchTermValue);
-                      }}
-                      onFocus={() => { // Clear previous selection if user focuses to search again
-                        if (newReservation.guestId) {
-                          setNewReservation(prev => ({ ...prev, guestName: '', guestId: '', guestEmail: '' }));
-                          setGuestSearchTerm('');
-                          setGuestSearchResults([]);
-                        }
-                      }}
-                    />
-                    {isGuestSearchLoading && <p className="text-xs text-muted-foreground mt-1">Searching...</p>}
-                    {guestSearchError && <p className="text-xs text-destructive mt-1">Error: {guestSearchError}</p>}
-                    {guestSearchResults.length > 0 && (
-                      <ul className="absolute z-10 w-full bg-background border border-border rounded-md shadow-lg max-h-48 overflow-auto mt-1">
-                        {guestSearchResults.map((guest) => (
-                          <li
-                            key={guest.id}
-                            className="px-3 py-2 hover:bg-accent cursor-pointer"
-                            onClick={() => {
-                              setNewReservation(prev => ({
-                                ...prev,
-                                guestId: guest.id,
-                                guestName: guest.name,
-                                guestEmail: guest.email || '',
-                              }));
-                              setGuestSearchTerm('');
-                              setGuestSearchResults([]);
-                              setGuestSearchError(null);
-                            }}
-                          >
-                            <p className="font-medium">{guest.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {guest.phone && <span>{guest.phone}</span>}
-                              {guest.email && guest.phone && <span className="mx-1">·</span>}
-                              {guest.email && <span>{guest.email}</span>}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {!isGuestSearchLoading && guestSearchTerm.length > 0 && guestSearchResults.length === 0 && !guestSearchError && (
-                        <div className="mt-2">
-                          <p className="text-xs text-muted-foreground">No guests found matching "{guestSearchTerm}".</p>
-                          <Button variant="link" size="sm" className="text-primary h-auto p-0 text-xs" onClick={() => setIsCreateGuestDialogOpen(true)}>
-                            Create New Guest
-                          </button>
-                        </div>
-                    )}
-                    {guestSearchTerm.length === 0 && guestSearchResults.length === 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">Search for an existing guest by name, email, or phone.</p>
-                    )}
-                  </div>
+
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label>Date</label>
-                      <div>
+                    {/* <div className="space-y-2">
+                      <Label htmlFor="reservation-date">Date</Label>
+                      <Popover>
                         <PopoverTrigger asChild>
                           <Button
+                            id="reservation-date"
                             variant="outline"
                             className="w-full justify-start text-left font-normal"
                           >
                             <Calendar className="mr-2 h-4 w-4" />
-                            {format(newReservation.date, "PPP")}
-                          </button>
-                        </div>
+                            {newReservation.date ? format(newReservation.date, "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                           <CalendarComponent
                             mode="single"
                             selected={newReservation.date}
-                            onSelect={(date) => date && setNewReservation({...newReservation, date})}
+                            onSelect={(date) => date && setNewReservation(prev => ({...prev, date}))}
                             initialFocus
-                            className="p-3 pointer-events-auto"
                           />
-                        </div>
-                      </div>
-                    </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div> */}
                     
-                    <div className="space-y-2">
-                      <Label htmlFor="reservation-time">Time</label>
+                    {/* <div className="space-y-2">
+                      <Label htmlFor="reservation-time">Time</Label>
                       <Input 
                         id="reservation-time" 
                         type="time" 
                         value={newReservation.time}
                         onChange={(e) => setNewReservation({...newReservation, time: e.target.value})}
                       />
-                    </div>
+                    </div> */}
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="reservation-party">Party Size</label>
+                    {/* <div className="space-y-2">
+                      <Label htmlFor="reservation-party">Party Size</Label>
                       <Input 
                         id="reservation-party" 
                         type="number" 
@@ -878,10 +889,10 @@ export default function Reservations() {
                         value={newReservation.partySize}
                         onChange={(e) => setNewReservation({...newReservation, partySize: parseInt(e.target.value) || 1})}
                       />
-                    </div>
+                    </div> */}
                     
                     <div className="space-y-2">
-                      <Label htmlFor="reservation-table">Table</label>
+                      <Label htmlFor="reservation-table">Table</Label>
                       {isTablesLoading ? (
                         <div className="flex h-10 items-center text-sm text-muted-foreground">
                           Loading tables...
@@ -908,7 +919,7 @@ export default function Reservations() {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="reservation-requests">Special Requests</label>
+                    <Label htmlFor="reservation-requests">Special Requests</Label>
                     <Input 
                       id="reservation-requests" 
                       placeholder="Any special requests..." 
@@ -917,29 +928,29 @@ export default function Reservations() {
                     />
                   </div>
                 </div>
-                <div>
+                <DialogFooter>
                   <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
                   <Button onClick={handleAddReservation}>Create Reservation</Button>
-                </div>
-              </div>
-            </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div> {/* Closes action buttons div (from line 739) */}
         </div> {/* Closes header row div (from line 737) */}
 
             {/* Create New Guest Dialog */}
-            <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
+            {/* <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
               <DialogContent className="sm:max-w-[425px]">
-                <div>
-                  <h2>Create New Guest</h2>
+                <DialogHeader>
+                  <DialogTitle>Create New Guest</DialogTitle>
                   <DialogDescription>
                     Add a new guest to the system. This guest will then be selected for the current reservation.
                   </DialogDescription>
-                </div>
+                </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="guest-name" className="text-right">
                       Name
-                    </label>
+                    </Label>
                     <Input 
                       id="guest-name" 
                       value={newGuestDetails.name} 
@@ -951,7 +962,7 @@ export default function Reservations() {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="guest-email" className="text-right">
                       Email
-                    </label>
+                    </Label>
                     <Input 
                       id="guest-email" 
                       type="email"
@@ -964,7 +975,7 @@ export default function Reservations() {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="guest-phone" className="text-right">
                       Phone
-                    </label>
+                    </Label>
                     <Input 
                       id="guest-phone" 
                       value={newGuestDetails.phone} 
@@ -977,7 +988,7 @@ export default function Reservations() {
                     <p className="text-sm text-destructive col-span-4 text-center">{createGuestError}</p>
                   )}
                 </div>
-                <div>
+                <DialogFooter>
                   <Button variant="outline" onClick={() => {
                     setIsCreateGuestDialogOpen(false);
                     setNewGuestDetails({ name: '', email: '', phone: '' });
@@ -986,15 +997,14 @@ export default function Reservations() {
                   <Button onClick={handleCreateGuest} disabled={isCreatingGuest}>
                     {isCreatingGuest ? 'Creating...' : 'Create Guest'}
                   </button>
-                </div>
-              </div>
-            </div>
-        </div>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog> */}
 
         {!selectedReservation ? (
           <>
             <div className="flex flex-wrap items-center gap-4 mb-6">
-              <div>
+              <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -1002,8 +1012,8 @@ export default function Reservations() {
                   >
                     <Calendar className="mr-2 h-4 w-4" />
                     {getDateFilterLabel()}
-                  </button>
-                </div>
+                  </Button>
+                </PopoverTrigger>
                 <PopoverContent className="w-auto" align="start">
                   <div className="grid gap-4">
                     <div className="space-y-2">
@@ -1015,28 +1025,28 @@ export default function Reservations() {
                           onClick={() => setDateFilter('today')}
                         >
                           Today
-                        </button>
+                        </Button>
                         <Button 
                           variant={dateFilter === 'week' ? "default" : "outline"} 
                           className="w-full"
                           onClick={() => setDateFilter('week')}
                         >
                           This Week
-                        </button>
+                        </Button>
                         <Button 
                           variant={dateFilter === 'month' ? "default" : "outline"} 
                           className="w-full"
                           onClick={() => setDateFilter('month')}
                         >
                           This Month
-                        </button>
+                        </Button>
                         <Button 
                           variant={dateFilter === 'custom' ? "default" : "outline"} 
                           className="w-full"
                           onClick={() => setDateFilter('custom')}
                         >
                           Custom
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     
@@ -1063,16 +1073,16 @@ export default function Reservations() {
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
+                </PopoverContent>
+              </Popover>
 
-              <div>
+              {/* <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline">
                     <Filter className="mr-2 h-4 w-4" />
                     {statusFilter ? `Status: ${statusFilter}` : 'Filter by status'}
-                  </button>
-                </div>
+                  </Button>
+                </PopoverTrigger>
                 <PopoverContent className="w-[200px] p-0">
                   <div className="p-2 space-y-1">
                     <Button 
@@ -1081,41 +1091,41 @@ export default function Reservations() {
                       onClick={() => setStatusFilter(null)}
                     >
                       All statuses
-                    </button>
+                    </Button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('confirmed')}
                     >
                       Confirmed
-                    </button>
+                    </Button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('pending')}
                     >
                       Pending
-                    </button>
+                    </Button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('cancelled')}
                     >
                       Cancelled
-                    </button>
+                    </Button>
                     <Button 
                       variant="ghost" 
                       className="w-full justify-start"
                       onClick={() => setStatusFilter('completed')}
                     >
                       Completed
-                    </button>
+                    </Button>
                   </div>
-                </div>
-              </div>
+                </PopoverContent>
+              </Popover> */}
 
               {guestIdFromQuery && (
-                <div className="flex items-center gap-2 ml-2">
+                {/* <div className="flex items-center gap-2 ml-2">
                   <span className="text-muted-foreground">Filtered by guest</span>
                   <Button 
                     variant="ghost" 
@@ -1125,7 +1135,7 @@ export default function Reservations() {
                   >
                     Clear filter
                   </button>
-                </div>
+                </div> */}
               )}
             </div>
 
@@ -1186,7 +1196,7 @@ export default function Reservations() {
               className="mb-2"
             >
               ← Back to list
-            </button>
+            </Button>
             
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4">
@@ -1246,28 +1256,28 @@ export default function Reservations() {
                     onClick={() => handleStatusChange('pending')}
                   >
                     Set Pending
-                  </button>
+                  </Button>
                   <Button
                     size="sm"
                     variant={selectedReservation.status === 'confirmed' ? 'default' : 'outline'}
                     onClick={() => handleStatusChange('confirmed')}
                   >
                     Confirm
-                  </button>
+                  </Button>
                   <Button
                     size="sm"
                     variant={selectedReservation.status === 'completed' ? 'default' : 'outline'}
                     onClick={() => handleStatusChange('completed')}
                   >
                     Complete
-                  </button>
+                  </Button>
                   <Button
                     size="sm"
                     variant={selectedReservation.status === 'cancelled' ? 'destructive' : 'outline'}
                     onClick={() => handleStatusChange('cancelled')}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1318,16 +1328,16 @@ export default function Reservations() {
               <Dialog open={isEditReservationOpen} onOpenChange={setIsEditReservationOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline">Edit Reservation</Button>
-                </div>
-                <div>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px]">
                   <div>
                     <h2>Edit Reservation</h2>
                   </div>
                   <div className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label>Date</label>
-                        <div>
+                        <Label>Date</Label>
+                        <Popover>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
@@ -1336,7 +1346,7 @@ export default function Reservations() {
                               <Calendar className="mr-2 h-4 w-4" />
                               {format(selectedReservation.date, "PPP")}
                             </Button>
-                          </div>
+                          </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <CalendarComponent
                               mode="single"
@@ -1345,12 +1355,12 @@ export default function Reservations() {
                               initialFocus
                               className="p-3 pointer-events-auto"
                             />
-                          </div>
-                        </div>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="edit-reservation-time">Time</label>
+                        <Label htmlFor="edit-reservation-time">Time</Label>
                         <Input 
                           id="edit-reservation-time" 
                           type="time" 
@@ -1362,7 +1372,7 @@ export default function Reservations() {
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="edit-reservation-party">Party Size</label>
+                        <Label htmlFor="edit-reservation-party">Party Size</Label>
                         <Input 
                           id="edit-reservation-party" 
                           type="number" 
@@ -1376,7 +1386,7 @@ export default function Reservations() {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="edit-reservation-table">Table</label>
+                        <Label htmlFor="edit-reservation-table">Table</Label>
                         {isTablesLoading ? (
                           <div className="flex h-10 items-center text-sm text-muted-foreground">
                             Loading tables...
@@ -1410,7 +1420,7 @@ export default function Reservations() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="edit-reservation-requests">Special Requests</label>
+                      <Label htmlFor="edit-reservation-requests">Special Requests</Label>
                       <Input 
                         id="edit-reservation-requests" 
                         value={selectedReservation.specialRequests || ''}
@@ -1422,8 +1432,8 @@ export default function Reservations() {
                     <Button variant="outline" onClick={() => setIsEditReservationOpen(false)}>Cancel</Button>
                     <Button onClick={handleEditReservation}>Save Changes</Button>
                   </div>
-                </div>
-              </div>
+              </DialogContent>
+            </Dialog>
               <Link to={`/guests?id=${selectedReservation.guestId}`}>
                 <Button variant="outline" className="bg-white">
                   View Guest Profile
@@ -1441,7 +1451,7 @@ export default function Reservations() {
                   }}
                 >
                   <DollarSign className="h-4 w-4" />
-                  Set Bill Amount
+                    Set Bill Amount
                 </Button>
               )}
             </div>
@@ -1451,12 +1461,12 @@ export default function Reservations() {
         {/* Bill Amount Dialog */}
         <Dialog open={billAmountDialogOpen} onOpenChange={setBillAmountDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
-            <div>
-              <h2>Enter Bill Amount</h2>
-            </div>
+            <DialogHeader>
+              <DialogTitle>Enter Bill Amount</DialogTitle>
+            </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="bill-amount">Bill Amount ($)</label>
+                <Label htmlFor="bill-amount">Bill Amount ($)</Label>
                 <Input 
                   id="bill-amount" 
                   type="number"
@@ -1471,26 +1481,26 @@ export default function Reservations() {
                 </p>
               </div>
             </div>
-            <div>
+            <DialogFooter>
               <Button variant="outline" onClick={() => setBillAmountDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleBillConfirm}>Save</Button>
-            </div>
-          </div>
-        </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Export Dialog */}
         <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
-            <div>
-              <h2>Export Reservations</h2>
-            </div>
+            <DialogHeader>
+              <DialogTitle>Export Reservations</DialogTitle>
+            </DialogHeader>
             <div className="space-y-4 py-4">
               <h4 className="text-sm font-medium">Select fields to export</h4>
               <div className="grid grid-cols-2 gap-2">
                 {['Guest Name', 'Date', 'Time', 'Party Size', 'Table', 'Status', 'Bill Amount'].map((field) => (
                   <div key={field} className="flex items-center space-x-2">
                     <input type="checkbox" id={`export-${field}`} defaultChecked className="rounded border-gray-300" />
-                    <Label htmlFor={`export-${field}`} className="text-sm">{field}</label>
+                    <Label htmlFor={`export-${field}`} className="text-sm">{field}</Label>
                   </div>
                 ))}
               </div>
@@ -1501,13 +1511,13 @@ export default function Reservations() {
                 <Button variant="outline" className="flex-1">All Dates</Button>
               </div>
             </div>
-            <div>
+            <DialogFooter>
               <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleExport}>Export CSV</Button>
-            </div>
-          </div>
-        </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-    </DashboardLayout>
+      </DashboardLayout>
   );
 }
