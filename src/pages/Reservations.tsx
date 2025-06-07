@@ -39,7 +39,6 @@ type DateFilterType = 'today' | 'tomorrow' | 'this-week' | 'next-week' | 'this-m
 interface Table {
   id: string;
   number: number;
-  name: string;
   capacity: number;
   status: string;
   created_at: string;
@@ -50,7 +49,7 @@ interface Table {
 const getTableName = (table: Table | string | undefined): string => {
   if (!table) return 'TBD';
   if (typeof table === 'string') return table; // Fallback if we only have an ID
-  return table.name || `T${table.number}`;
+  return `T${table.number}`; // Always generate T1, T2, T3, etc.
 };
 
 // Updated frontend Reservation interface
@@ -1098,7 +1097,7 @@ export default function Reservations(): JSX.Element {
                           <option value="">Select a table</option>
                           {tables.map((table) => (
                             <option key={table.id} value={table.id}>
-                              {getTableName(table)} (Seats: {table.capacity})
+                              T{table.number} (Seats: {table.capacity})
                             </option>
                           ))}
                         </select>
@@ -1252,7 +1251,7 @@ export default function Reservations(): JSX.Element {
                     </div>
                     <div>
                       {tables.find(t => t.id === reservation.tableId) ? 
-                        getTableName(tables.find(t => t.id === reservation.tableId)) : 
+                        `T${tables.find(t => t.id === reservation.tableId)?.number}` : 
                         getTableName(reservation.tableId)}
                     </div>
                     <div>
@@ -1401,7 +1400,7 @@ export default function Reservations(): JSX.Element {
                   <p>
                     {tables.find(t => t.id === selectedReservation.tableId) ? (
                       <>
-                        {getTableName(tables.find(t => t.id === selectedReservation.tableId))} 
+                        T{tables.find(t => t.id === selectedReservation.tableId)?.number} 
                         (Seats: {tables.find(t => t.id === selectedReservation.tableId)?.capacity})
                       </>
                     ) : (
@@ -1522,7 +1521,7 @@ export default function Reservations(): JSX.Element {
                             <option value="">Select a table</option>
                             {tables.map((table) => (
                               <option key={table.id} value={table.id}>
-                                {getTableName(table)} (Seats: {table.capacity})
+                                T{table.number} (Seats: {table.capacity})
                               </option>
                             ))}
                           </select>
