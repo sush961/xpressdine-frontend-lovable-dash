@@ -46,9 +46,13 @@ interface Table {
 }
 
 // Helper function to format table name from table data
-const getTableName = (table: Table | string | undefined): string => {
+const getTableName = (table: Table | string | undefined, tablesList: Table[] = []): string => {
   if (!table) return 'TBD';
-  if (typeof table === 'string') return table; // Fallback if we only have an ID
+  if (typeof table === 'string') {
+    // Try to find the table by ID for better display
+    const foundTable = tablesList.find(t => t.id === table);
+    return foundTable ? `T${foundTable.number}` : table.slice(0, 8) + '...'; // Show partial UUID as fallback
+  }
   return `T${table.number}`; // Always generate T1, T2, T3, etc.
 };
 
@@ -296,17 +300,36 @@ export default function Reservations(): JSX.Element {
     }
   }, [selectedReservation, toast, fetchReservations]);
 
-  // Function to fetch tables
+  // Function to fetch all tables for dropdown population
   const fetchTables = useCallback(async (): Promise<void> => {
     setIsTablesLoading(true);
     setTablesError(null);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/tables`);
+      // Use current date as default for fetching all tables
+      const currentDate = format(new Date(), 'yyyy-MM-dd');
+      
+      // Call the API with date parameter (required) but no time (returns all tables)
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/tables?date=${currentDate}`
+      );
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
+      
       const data = await response.json();
-      setTables(Array.isArray(data) ? data : []);
+      
+      // Handle both response formats from your API
+      if (data.availableTables) {
+        // When date/time provided, API returns {availableTables: [...]}
+        setTables(Array.isArray(data.availableTables) ? data.availableTables : []);
+      } else if (Array.isArray(data)) {
+        // When only date provided, API returns array directly
+        setTables(data);
+      } else {
+        console.warn('Unexpected API response format:', data);
+        setTables([]);
+      }
     } catch (error) {
       console.error('Error fetching tables:', error);
       setTablesError('Failed to load tables. Please try again later.');
@@ -315,6 +338,38 @@ export default function Reservations(): JSX.Element {
       setIsTablesLoading(false);
     }
   }, []);
+
+  // Function to fetch available tables for specific date/time
+  const fetchAvailableTables = useCallback(async (date: Date, time: string): Promise<Table[]> => {
+    try {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/tables?date=${dateStr}&time=${time}&duration=90`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.availableTables || [];
+    } catch (error) {
+      console.error('Error fetching available tables:', error);
+      return [];
+    }
+  }, []);
+
+  // Error handler for table operations
+  const handleTableError = useCallback((error: unknown, operation: string) => {
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred';
+    console.error(`Table ${operation} error:`, error);
+    
+    toast({
+      title: `Table ${operation} Failed`,
+      description: message,
+      variant: "destructive"
+    });
+  }, [toast]);
 
   // Fetch reservations and tables when component mounts
   useEffect(() => {
@@ -1082,25 +1137,55 @@ export default function Reservations(): JSX.Element {
                       <Label htmlFor="reservation-table">Table</Label>
                       {isTablesLoading ? (
                         <div className="flex h-10 items-center text-sm text-muted-foreground">
-                          Loading tables...
+                          <div className="animate-pulse">Loading available tables...</div>
                         </div>
                       ) : tablesError ? (
-                        <div className="text-sm text-destructive">{tablesError}</div>
+                        <div className="space-y-2">
+                          <div className="text-sm text-destructive">{tablesError}</div>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={fetchTables}
+                            className="mt-1"
+                          >
+                            Retry
+                          </Button>
+                        </div>
                       ) : (
-                        <select
-                          id="reservation-table"
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          value={newReservation.tableId || ''}
-                          onChange={(e) => setNewReservation({...newReservation, tableId: e.target.value})}
-                          required
-                        >
-                          <option value="">Select a table</option>
-                          {tables.map((table) => (
-                            <option key={table.id} value={table.id}>
-                              T{table.number} (Seats: {table.capacity})
-                            </option>
-                          ))}
-                        </select>
+                        <>
+                          <select
+                            id="reservation-table"
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            value={newReservation.tableId || ''}
+                            onChange={(e) => setNewReservation({...newReservation, tableId: e.target.value})}
+                            required
+                            disabled={tables.length === 0}
+                          >
+                            <option value="">Select a table</option>
+                            {tables
+                              .filter(table => table.capacity >= newReservation.partySize) // Filter by capacity
+                              .map((table) => (
+                                <option 
+                                  key={table.id} 
+                                  value={table.id}
+                                  disabled={table.status === 'occupied'}
+                                  className={table.status === 'occupied' ? 'text-muted-foreground' : ''}
+                                >
+                                  T{table.number} (Seats: {table.capacity}) {table.status === 'occupied' ? '- Occupied' : ''}
+                                </option>
+                              ))}
+                          </select>
+                          {tables.length === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              No tables available. Please check your configuration.
+                            </p>
+                          )}
+                          {tables.length > 0 && tables.every(t => t.capacity < newReservation.partySize) && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              No tables available for {newReservation.partySize} guests. Please reduce party size or add larger tables.
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1250,9 +1335,7 @@ export default function Reservations(): JSX.Element {
                       {reservation.partySize}
                     </div>
                     <div>
-                      {tables.find(t => t.id === reservation.tableId) ? 
-                        `T${tables.find(t => t.id === reservation.tableId)?.number}` : 
-                        getTableName(reservation.tableId)}
+                      {getTableName(reservation.tableId, tables)}
                     </div>
                     <div>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium ${getStatusBadgeClass(reservation.status)}`}>
@@ -1398,14 +1481,13 @@ export default function Reservations(): JSX.Element {
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground">Table</h3>
                   <p>
-                    {tables.find(t => t.id === selectedReservation.tableId) ? (
-                      <>
-                        T{tables.find(t => t.id === selectedReservation.tableId)?.number} 
-                        (Seats: {tables.find(t => t.id === selectedReservation.tableId)?.capacity})
-                      </>
-                    ) : (
-                      getTableName(selectedReservation.tableId)
-                    )}
+                    <span>
+                      {getTableName(selectedReservation.tableId, tables)}
+                      {(() => {
+                        const table = tables.find(t => t.id === selectedReservation.tableId);
+                        return table ? ` (Seats: ${table.capacity})` : '';
+                      })()}
+                    </span>
                   </p>
                 </div>
                 <div>
