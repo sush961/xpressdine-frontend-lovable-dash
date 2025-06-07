@@ -6,7 +6,6 @@ import {
   Calendar as CalendarIcon, 
   FileText, 
   Plus, 
-  Users, 
   DollarSign
 } from 'lucide-react';
 import { ApiClient } from '@/lib/ApiClient';
@@ -33,18 +32,6 @@ import {
   DialogDescription
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-
-// Get the API base URL from environment variables
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://xpressdine-backend.vercel.app';
-
-// Fix for TypeScript error
-declare global {
-  interface Window {
-    __ENV: {
-      VITE_API_BASE_URL: string;
-    };
-  }
-}
 
 type DateFilterType = 'today' | 'tomorrow' | 'this-week' | 'next-week' | 'this-month' | 'custom' | 'week' | 'month';
 
@@ -75,6 +62,7 @@ interface Reservation {
   guestInitials: string; // Derived from customer_name
   date: Date; // Parsed from backend 'date' string or 'reservation_time'
   time: string; // From backend 'time' string
+  end_time?: Date | null; // New: reservation end time
   partySize: number; // from party_size
   tableId: string; // Changed from tableNumber, will store table_id (UUID)
   status: 'confirmed' | 'pending' | 'cancelled' | 'completed' | 'no-show'; // Expanded status
@@ -168,6 +156,10 @@ export default function Reservations(): JSX.Element {
   const [isTablesLoading, setIsTablesLoading] = useState(true);
   const [tablesError, setTablesError] = useState<string | null>(null);
   
+  // Submission states - Fixed: Added missing state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  
   // New reservation form state
   const [newReservation, setNewReservation] = useState({
     guestId: guestIdFromQuery || '',
@@ -175,6 +167,7 @@ export default function Reservations(): JSX.Element {
     guestEmail: '',
     date: new Date(),
     time: '19:00',
+    end_time: null as Date | null,
     partySize: 2,
     tableId: '',
     specialRequests: ''
@@ -199,6 +192,7 @@ export default function Reservations(): JSX.Element {
         guestInitials?: string;
         date: string;
         time: string;
+        end_time?: string | null;
         guests: number;
         tableId?: string;
         status: string;
@@ -224,6 +218,7 @@ export default function Reservations(): JSX.Element {
           return new Date();
         })(),
         time: item.time,
+        end_time: item.end_time ? new Date(item.end_time) : null,
         partySize: item.guests,
         tableId: item.tableId || '',
         status: item.status as Reservation['status'],
@@ -578,15 +573,10 @@ export default function Reservations(): JSX.Element {
     performUpdateReservationStatus(status);
   };
 
+  const selectedTable = tables.find(t => t.id === newReservation.tableId);
+
   const handleAddReservation = async (): Promise<void> => {
-    if (!newReservation.guestId && guestSearchTerm) {
-      toast({
-        title: "Guest Not Selected",
-        description: "Please select a guest from the search results or clear the search to enter manually (if supported).",
-        variant: "destructive"
-      });
-      return;
-    }
+    // Validate required fields
     if (!newReservation.guestId) {
       toast({
         title: "Guest Required",
@@ -595,16 +585,73 @@ export default function Reservations(): JSX.Element {
       });
       return;
     }
-
-    const table = tables.find(t => t.id === newReservation.tableId);
-    if (!table) {
+    if (!newReservation.guestName) {
       toast({
-        title: "Invalid Table",
-        description: "Please select a valid table.",
+        title: "Guest Name Required",
+        description: "Guest name is required.",
         variant: "destructive"
       });
       return;
     }
+    if (!newReservation.date) {
+      toast({
+        title: "Date Required",
+        description: "Please select a date for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.time) {
+      toast({
+        title: "Time Required",
+        description: "Please select a time for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.partySize || newReservation.partySize < 1) {
+      toast({
+        title: "Party Size Required",
+        description: "Please enter a valid party size.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.tableId) {
+      toast({
+        title: "Table Required",
+        description: "Please select a table for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (selectedTable && newReservation.partySize > selectedTable.capacity) {
+      toast({
+        title: "Party Size Exceeds Table Capacity",
+        description: `Selected table only seats ${selectedTable.capacity}. Reduce party size or pick a larger table.`,
+        variant: "destructive"
+      });
+      return;
+    }
+    if (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (newReservation.specialRequests && newReservation.specialRequests.length > 250) {
+      toast({
+        title: "Special Requests Too Long",
+        description: "Special requests must be 250 characters or less.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    const table = selectedTable;
 
     const payload = {
       guestId: newReservation.guestId,
@@ -615,6 +662,7 @@ export default function Reservations(): JSX.Element {
       partySize: newReservation.partySize,
       tableNumber: table.number.toString(),
       specialRequests: newReservation.specialRequests,
+      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : undefined,
     };
 
     try {
@@ -635,6 +683,7 @@ export default function Reservations(): JSX.Element {
           description: responseData.error || responseData.details || 'An unknown error occurred.',
           variant: "destructive"
         });
+        setIsSubmitting(false);
         return;
       }
 
@@ -646,6 +695,7 @@ export default function Reservations(): JSX.Element {
         guestInitials: (responseData.customer_name || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
         date: new Date(responseData.reservation_time),
         time: format(new Date(responseData.reservation_time), 'HH:mm'),
+        end_time: responseData.end_time ? new Date(responseData.end_time) : null,
         partySize: responseData.party_size,
         tableId: responseData.table_id,
         status: responseData.status as Reservation['status'],
@@ -654,6 +704,7 @@ export default function Reservations(): JSX.Element {
 
       fetchReservations();
       setIsAddReservationOpen(false);
+      setIsSubmitting(false);
 
       toast({
         title: "Reservation Created Successfully",
@@ -661,6 +712,7 @@ export default function Reservations(): JSX.Element {
       });
 
     } catch (error: unknown) {
+      setIsSubmitting(false);
       console.error('Network or unexpected error creating reservation:', error);
       let errorMessage = 'A network error occurred. Please try again.';
       if (error instanceof Error) {
@@ -682,6 +734,7 @@ export default function Reservations(): JSX.Element {
       guestEmail: '',
       date: new Date(),
       time: '19:00',
+      end_time: null,
       partySize: 2,
       tableId: '',
       specialRequests: ''
@@ -692,7 +745,56 @@ export default function Reservations(): JSX.Element {
 
   const handleEditReservation = async (): Promise<void> => {
     if (!selectedReservation) return;
-    
+
+    // Validation
+    if (!selectedReservation.guestId) {
+      toast({
+        title: "Guest Required",
+        description: "Please search and select a guest for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!selectedReservation.guestName) {
+      toast({
+        title: "Guest Name Required",
+        description: "Guest name is required.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!selectedReservation.date) {
+      toast({
+        title: "Date Required",
+        description: "Please select a date for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!selectedReservation.time) {
+      toast({
+        title: "Time Required",
+        description: "Please select a time for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!selectedReservation.partySize || selectedReservation.partySize < 1) {
+      toast({
+        title: "Party Size Required",
+        description: "Please enter a valid party size.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!selectedReservation.tableId) {
+      toast({
+        title: "Table Required",
+        description: "Please select a table for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
     const table = tables.find(t => t.id === selectedReservation.tableId);
     if (!table) {
       toast({
@@ -702,6 +804,32 @@ export default function Reservations(): JSX.Element {
       });
       return;
     }
+    if (selectedReservation.partySize > table.capacity) {
+      toast({
+        title: "Party Size Exceeds Table Capacity",
+        description: `Selected table only seats ${table.capacity}. Reduce party size or pick a larger table.`,
+        variant: "destructive"
+      });
+      return;
+    }
+    if (selectedReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(selectedReservation.guestEmail)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (selectedReservation.specialRequests && selectedReservation.specialRequests.length > 250) {
+      toast({
+        title: "Special Requests Too Long",
+        description: "Special requests must be 250 characters or less.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsEditSubmitting(true);
 
     const payload = {
       guestId: selectedReservation.guestId,
@@ -713,6 +841,7 @@ export default function Reservations(): JSX.Element {
       tableNumber: table.number.toString(),
       status: selectedReservation.status,
       specialRequests: selectedReservation.specialRequests,
+      end_time: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : undefined,
     };
 
     try {
@@ -727,6 +856,7 @@ export default function Reservations(): JSX.Element {
       const responseData = await response.json();
 
       if (!response.ok) {
+        setIsEditSubmitting(false);
         console.error('Failed to update reservation:', responseData);
         toast({
           title: "Error Updating Reservation",
@@ -739,6 +869,7 @@ export default function Reservations(): JSX.Element {
       fetchReservations(); 
       setSelectedReservation(null);
       setIsEditReservationOpen(false);
+      setIsEditSubmitting(false);
 
       toast({
         title: "Reservation Updated Successfully",
@@ -746,6 +877,7 @@ export default function Reservations(): JSX.Element {
       });
 
     } catch (error: unknown) {
+      setIsEditSubmitting(false);
       console.error('Network or unexpected error updating reservation:', error);
       let errorMessage = 'A network error occurred. Please try again.';
       if (error instanceof Error) {
@@ -823,26 +955,82 @@ export default function Reservations(): JSX.Element {
                   <DialogTitle>Create New Reservation</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Guest Selection */}
+                  <div className="space-y-2">
+                    <Label htmlFor="reservation-guest">Guest</Label>
+                    <div className="relative">
+                      <Input
+                        id="reservation-guest"
+                        placeholder="Search guest by name, email, or phone..."
+                        value={guestSearchTerm}
+                        onChange={e => {
+                          setGuestSearchTerm(e.target.value);
+                          fetchGuestSuggestions(e.target.value);
+                        }}
+                        autoComplete="off"
+                      />
+                      {guestSearchTerm && guestSearchResults.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full rounded-md bg-white shadow-lg border border-gray-200 max-h-40 overflow-auto">
+                          {guestSearchResults.map(guest => (
+                            <div
+                              key={guest.id}
+                              className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                              onClick={() => {
+                                setNewReservation(prev => ({
+                                  ...prev,
+                                  guestId: guest.id,
+                                  guestName: guest.name,
+                                  guestEmail: guest.email || '',
+                                }));
+                                setGuestSearchTerm(guest.name);
+                                setGuestSearchResults([]);
+                              }}
+                            >
+                              <div className="font-medium">{guest.name}</div>
+                              <div className="text-xs text-gray-500">{guest.email} {guest.phone}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {/* Create Guest Button */}
+                    {guestSearchTerm && guestSearchResults.length === 0 && !isGuestSearchLoading && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setNewGuestDetails({ name: guestSearchTerm, email: '', phone: '' });
+                          setIsCreateGuestDialogOpen(true);
+                        }}
+                        className="w-full"
+                      >
+                        Create new guest: {guestSearchTerm}
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Date and Time */}
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="reservation-date">Date</Label>
+                      <Label>Date</Label>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
-                            id="reservation-date"
                             variant="outline"
                             className="w-full justify-start text-left font-normal"
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {newReservation.date ? format(newReservation.date, "PPP") : <span>Pick a date</span>}
+                            {format(newReservation.date, "PPP")}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                           <CalendarComponent
                             mode="single"
                             selected={newReservation.date}
-                            onSelect={(date) => date && setNewReservation(prev => ({...prev, date}))}
+                            onSelect={(date) => date && setNewReservation({...newReservation, date})}
                             initialFocus
+                            className="p-3 pointer-events-auto"
                           />
                         </PopoverContent>
                       </Popover>
@@ -857,8 +1045,28 @@ export default function Reservations(): JSX.Element {
                         onChange={(e) => setNewReservation({...newReservation, time: e.target.value})}
                       />
                     </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="reservation-end-time">End Time</Label>
+                      <Input
+                        id="reservation-end-time"
+                        type="time"
+                        value={newReservation.end_time ? format(newReservation.end_time, 'HH:mm') : ''}
+                        onChange={e => {
+                          const [hours, minutes] = e.target.value.split(":");
+                          if (newReservation.date && hours && minutes) {
+                            const endTime = new Date(newReservation.date);
+                            endTime.setHours(Number(hours), Number(minutes), 0, 0);
+                            setNewReservation(prev => ({ ...prev, end_time: endTime }));
+                          } else {
+                            setNewReservation(prev => ({ ...prev, end_time: null }));
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                   
+                  {/* Party Size and Table */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="reservation-party">Party Size</Label>
@@ -910,7 +1118,23 @@ export default function Reservations(): JSX.Element {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
-                  <Button onClick={handleAddReservation}>Create Reservation</Button>
+                  <Button
+                    onClick={handleAddReservation}
+                    disabled={
+                      !newReservation.guestId ||
+                      !newReservation.guestName ||
+                      !newReservation.date ||
+                      !newReservation.time ||
+                      !newReservation.partySize ||
+                      !newReservation.tableId ||
+                      isSubmitting ||
+                      (selectedTable && newReservation.partySize > selectedTable.capacity) ||
+                      (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) ||
+                      (newReservation.specialRequests && newReservation.specialRequests.length > 250)
+                    }
+                  >
+                    {isSubmitting ? 'Creating...' : 'Create Reservation'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -1011,18 +1235,19 @@ export default function Reservations(): JSX.Element {
                     onClick={() => handleReservationSelect(reservation)}
                   >
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8 bg-primary text-primary-foreground">
-                        <AvatarFallback>{reservation.guestInitials}</AvatarFallback>
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs">
+                          {reservation.guestInitials}
+                        </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <div className="font-medium">{reservation.guestName}</div>
-                        <div className="text-muted-foreground">
-                          {format(new Date(reservation.date), "MMM d, yyyy")} at {reservation.time}
-                        </div>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{reservation.guestName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(reservation.date, 'MMM d')} at {reservation.time}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center">
-                      <Users className="mr-1 h-4 w-4 text-muted-foreground" />
+                    <div className="text-right">
                       {reservation.partySize}
                     </div>
                     <div>
@@ -1056,6 +1281,17 @@ export default function Reservations(): JSX.Element {
             
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-4">
+                <Avatar className="h-12 w-12">
+                  <AvatarFallback className="text-lg">
+                    {selectedReservation.guestInitials}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="text-xl font-semibold">{selectedReservation.guestName}</h2>
+                  <p className="text-muted-foreground">
+                    {format(selectedReservation.date, "EEEE, MMMM d, yyyy")} at {selectedReservation.time}
+                  </p>
+                </div>
               </div>
             </div>
             
@@ -1190,7 +1426,7 @@ export default function Reservations(): JSX.Element {
                     <DialogTitle>Edit Reservation</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label>Date</Label>
                         <Popover>
@@ -1222,6 +1458,25 @@ export default function Reservations(): JSX.Element {
                           type="time" 
                           value={selectedReservation.time}
                           onChange={(e) => setSelectedReservation({...selectedReservation, time: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-reservation-end-time">End Time</Label>
+                        <Input
+                          id="edit-reservation-end-time"
+                          type="time"
+                          value={selectedReservation.end_time ? (typeof selectedReservation.end_time === 'string' ? selectedReservation.end_time : format(selectedReservation.end_time, 'HH:mm')) : ''}
+                          onChange={e => {
+                            // Update end_time as a Date object on the same day as reservation.date
+                            const [hours, minutes] = e.target.value.split(":");
+                            if (selectedReservation.date && hours && minutes) {
+                              const endTime = new Date(selectedReservation.date);
+                              endTime.setHours(Number(hours), Number(minutes), 0, 0);
+                              setSelectedReservation(prev => ({ ...prev, end_time: endTime }));
+                            } else {
+                              setSelectedReservation(prev => ({ ...prev, end_time: null }));
+                            }
+                          }}
                         />
                       </div>
                     </div>
@@ -1286,7 +1541,12 @@ export default function Reservations(): JSX.Element {
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsEditReservationOpen(false)}>Cancel</Button>
-                    <Button onClick={handleEditReservation}>Save Changes</Button>
+                    <Button 
+                      onClick={handleEditReservation}
+                      disabled={isEditSubmitting}
+                    >
+                      {isEditSubmitting ? 'Saving...' : 'Save Changes'}
+                    </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
@@ -1307,12 +1567,69 @@ export default function Reservations(): JSX.Element {
                   }}
                 >
                   <DollarSign className="h-4 w-4" />
-                    Set Bill Amount
+                  Set Bill Amount
                 </Button>
               )}
             </div>
           </div>
         )}
+
+        {/* Create Guest Dialog */}
+        <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Create New Guest</DialogTitle>
+              <DialogDescription>
+                Add a new guest to the system before creating the reservation.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-guest-name">Name *</Label>
+                <Input
+                  id="new-guest-name"
+                  value={newGuestDetails.name}
+                  onChange={(e) => setNewGuestDetails({...newGuestDetails, name: e.target.value})}
+                  placeholder="Enter guest name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-guest-email">Email</Label>
+                <Input
+                  id="new-guest-email"
+                  type="email"
+                  value={newGuestDetails.email}
+                  onChange={(e) => setNewGuestDetails({...newGuestDetails, email: e.target.value})}
+                  placeholder="Enter email address"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-guest-phone">Phone</Label>
+                <Input
+                  id="new-guest-phone"
+                  type="tel"
+                  value={newGuestDetails.phone}
+                  onChange={(e) => setNewGuestDetails({...newGuestDetails, phone: e.target.value})}
+                  placeholder="Enter phone number"
+                />
+              </div>
+              {createGuestError && (
+                <p className="text-sm text-destructive">{createGuestError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreateGuestDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleCreateGuest}
+                disabled={isCreatingGuest || !newGuestDetails.name.trim()}
+              >
+                {isCreatingGuest ? 'Creating...' : 'Create Guest'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         
         <Dialog open={billAmountDialogOpen} onOpenChange={setBillAmountDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">

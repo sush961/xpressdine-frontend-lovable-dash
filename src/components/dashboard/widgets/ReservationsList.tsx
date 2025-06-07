@@ -8,6 +8,7 @@ interface ReservationDisplayItem {
   id: string;
   name: string;
   time: string; // e.g., "12:30 PM"
+  end_time?: string | null; // New: reservation end time (ISO string)
   guests: number;
   status: string; // Status from API, e.g., 'confirmed', 'pending'
 }
@@ -133,6 +134,9 @@ export function ReservationsList() {
                     <p className="font-medium">{reservation.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {reservation.time} · {reservation.guests} guests
+                      {reservation.end_time && (
+                        <span className="ml-2 text-xs text-muted-foreground">– Ends: {new Date(reservation.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      )}
                     </p>
                   </div>
                 </div>
