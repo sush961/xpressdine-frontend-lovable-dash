@@ -1507,6 +1507,17 @@ export default function Reservations(): JSX.Element {
                     <DialogTitle>Edit Reservation</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
+                    {/* Display Guest Information (Read-only) */}
+                    <div className="space-y-2">
+                      <Label>Guest</Label>
+                      <div className="p-3 bg-muted rounded-md">
+                        <p className="font-medium">{selectedReservation.guestName}</p>
+                        {selectedReservation.guestEmail && (
+                          <p className="text-sm text-muted-foreground">{selectedReservation.guestEmail}</p>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label>Date</Label>
