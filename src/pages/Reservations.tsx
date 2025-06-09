@@ -380,7 +380,7 @@ export default function Reservations(): JSX.Element {
     setIsGuestSearchLoading(true);
     setGuestSearchError(null);
     try {
-      const path = `/api/customers?search=${encodeURIComponent(searchTerm)}`;
+      const path = `/api/customers/search?q=${encodeURIComponent(searchTerm)}`;
       const responseData = await ApiClient.get<{ data: CustomerSearchResult[] }>(path);
       setGuestSearchResults(responseData.data || []);
     } catch (error: unknown) {
@@ -634,13 +634,13 @@ export default function Reservations(): JSX.Element {
     // Fixed payload structure to match backend expectations
     const payload = {
       guestId: newReservation.guestId,
-      customerName: newReservation.guestName,
-      customerEmail: newReservation.guestEmail,
+      guestName: newReservation.guestName,        // ✅ Correct field name
+      guestEmail: newReservation.guestEmail,     // ✅ Correct field name
       date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
       partySize: newReservation.partySize,
       tableNumber: newReservation.tableId, // Send table number as string
-      notes: newReservation.specialRequests,
+      specialRequests: newReservation.specialRequests, // ✅ Correct field name
       endTime: newReservation.end_time ? newReservation.end_time.toISOString() : null,
     };
 
@@ -813,15 +813,15 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guestId: selectedReservation.guestId,
-      customerName: selectedReservation.guestName,
-      customerEmail: selectedReservation.guestEmail,
+      guestId: newReservation.guestId,
+      guestName: newReservation.guestName,        // ✅ Correct field name
+      guestEmail: newReservation.guestEmail,      // ✅ Correct field name
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
       partySize: selectedReservation.partySize,
       tableNumber: selectedReservation.tableId, // Send table number as string
       status: selectedReservation.status,
-      notes: selectedReservation.specialRequests,
+      specialRequests: newReservation.specialRequests, // ✅ Correct field name
       endTime: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null,
     };
 
