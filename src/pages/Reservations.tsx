@@ -555,6 +555,16 @@ export default function Reservations(): JSX.Element {
   const selectedTable = tables.find(t => t.number.toString() === newReservation.tableId);
 
   const handleAddReservation = async (): Promise<void> => {
+    // Validate configuration
+    if (!import.meta.env.VITE_RESTAURANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "Restaurant ID is not configured. Please contact support.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Validate required fields
     if (!newReservation.guestId) {
       toast({
@@ -633,8 +643,11 @@ export default function Reservations(): JSX.Element {
 
     // Payload structure to match backend expectations
     const payload = {
+      // Debug: Log the payload before sending
+      // @ts-ignore - VITE_RESTAURANT_ID is defined in .env
+      debug_restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
       guest_id: newReservation.guestId,
-      restaurant_id: import.meta.env.VITE_RESTAURANT_ID, // Using environment variable
+      restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
       table_id: newReservation.tableId,
       date_time: `${format(newReservation.date, 'yyyy-MM-dd')}T${newReservation.time}:00.000Z`,
       party_size: newReservation.partySize,
@@ -724,6 +737,16 @@ export default function Reservations(): JSX.Element {
   const handleEditReservation = async (): Promise<void> => {
     if (!selectedReservation) return;
 
+    // Validate configuration
+    if (!import.meta.env.VITE_RESTAURANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "Restaurant ID is not configured. Please contact support.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Validation (same as create)
     if (!selectedReservation.guestId) {
       toast({
@@ -810,6 +833,16 @@ export default function Reservations(): JSX.Element {
     setIsEditSubmitting(true);
 
     // Fixed payload structure to match backend expectations
+    console.log('Edit Reservation Payload:', JSON.stringify({
+      guest_id: selectedReservation.guestId,
+      restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
+      table_id: selectedReservation.tableId,
+      date_time: `${format(selectedReservation.date, 'yyyy-MM-dd')}T${selectedReservation.time}:00.000Z`,
+      party_size: selectedReservation.partySize,
+      status: selectedReservation.status,
+      notes: selectedReservation.specialRequests || ''
+    }, null, 2));
+    
     const payload = {
       guest_id: selectedReservation.guestId,
       restaurant_id: import.meta.env.VITE_RESTAURANT_ID, // Using environment variable
