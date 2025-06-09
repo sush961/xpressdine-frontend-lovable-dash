@@ -976,7 +976,7 @@ export default function Reservations(): JSX.Element {
                     </div>
                     
                     {/* Message when no guest selected or found */}
-                    {guestSearchTerm && guestSearchResults.length === 0 && !isGuestSearchLoading && (
+                    {guestSearchTerm && guestSearchResults.length === 0 && !isGuestSearchLoading && !newReservation.guestId && (
                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
                         <p className="text-sm text-amber-800 mb-2">
                           No guest found with that search term.
