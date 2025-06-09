@@ -381,8 +381,8 @@ export default function Reservations(): JSX.Element {
     setGuestSearchError(null);
     try {
       const path = `/api/customers/search?q=${encodeURIComponent(searchTerm)}`;
-      const responseData = await ApiClient.get<{ data: CustomerSearchResult[] }>(path);
-      setGuestSearchResults(responseData.data || []);
+      const responseData = await ApiClient.get<CustomerSearchResult[]>(path);
+      setGuestSearchResults(responseData || []);
     } catch (error: unknown) {
       console.error('Error fetching guest suggestions:', error);
       let message = 'An unknown error occurred while fetching guest suggestions.';
