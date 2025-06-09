@@ -633,15 +633,16 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guestId: newReservation.guestId,              // ✅ Correct
-      name: newReservation.guestName,               // ✅ Backend expects 'name' not 'guestName'
-      guestEmail: newReservation.guestEmail,        // ✅ Correct
+      guest_id: newReservation.guestId,
+      customer_name: newReservation.guestName,
+      customer_email: newReservation.guestEmail,
       date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
-      guests: newReservation.partySize,             // ✅ Backend expects 'guests' not 'partySize'
-      tableId: newReservation.tableId,              // ✅ Backend expects 'tableId' not 'tableNumber'
-      specialRequests: newReservation.specialRequests,
-      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : null, // ✅ Backend expects 'end_time' not 'endTime'
+      party_size: newReservation.partySize,
+      table_number: newReservation.tableId,        // Try table_number instead of tableId
+      notes: newReservation.specialRequests,       // Try notes instead of specialRequests
+      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : null,
+      status: 'pending'                             // Add default status - might be required
     };
 
     try {
