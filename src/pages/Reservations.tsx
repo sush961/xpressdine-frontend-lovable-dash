@@ -652,13 +652,18 @@ export default function Reservations(): JSX.Element {
 
     // Transform data to match backend's expected format
     const payload = {
+      // Required fields
       guestId: newReservation.guestId,
-      guestName: newReservation.guestName || 'Guest',
-      guestEmail: newReservation.guestEmail || '',
+      guestName: newReservation.guestName,  // Required by backend
+      guestEmail: newReservation.guestEmail, // Required by backend
       date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
-      partySize: newReservation.partySize,
+      partySize: Number(newReservation.partySize),
+      
+      // Table reference - using tableId
       tableId: newReservation.tableId,
+      
+      // Optional fields
       specialRequests: newReservation.specialRequests || '',
       status: 'pending'
     };
