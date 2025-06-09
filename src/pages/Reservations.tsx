@@ -650,17 +650,20 @@ export default function Reservations(): JSX.Element {
 
     setIsSubmitting(true);
 
-    // Payload structure to match backend expectations
+    // Transform data to match backend's expected format
     const payload = {
-      guestId: newReservation.guestId,         // ✅ camelCase
-      restaurantId: import.meta.env.VITE_RESTAURANT_ID,  // ✅ camelCase
-      tableId: newReservation.tableId,         // ✅ camelCase
-      date: format(newReservation.date, 'yyyy-MM-dd'),   // ✅ separate date
-      time: newReservation.time,               // ✅ separate time
-      partySize: newReservation.partySize,     // ✅ camelCase
-      status: 'pending',
-      notes: newReservation.specialRequests || ''
+      guestId: newReservation.guestId,
+      guestName: newReservation.guestName || 'Guest',
+      guestEmail: newReservation.guestEmail || '',
+      date: format(newReservation.date, 'yyyy-MM-dd'),
+      time: newReservation.time,
+      partySize: newReservation.partySize,
+      tableId: newReservation.tableId,
+      specialRequests: newReservation.specialRequests || '',
+      status: 'pending'
     };
+    
+    console.log('Sending payload to backend:', JSON.stringify(payload, null, 2));
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`, {
