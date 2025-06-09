@@ -633,15 +633,15 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guestId: newReservation.guestId,
-      guestName: newReservation.guestName,        // ✅ Correct field name
-      guestEmail: newReservation.guestEmail,     // ✅ Correct field name
+      guest_id: newReservation.guestId,
+      customer_name: newReservation.guestName,
+      customer_email: newReservation.guestEmail,
       date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
-      partySize: newReservation.partySize,
-      tableNumber: newReservation.tableId, // Send table number as string
-      specialRequests: newReservation.specialRequests, // ✅ Correct field name
-      endTime: newReservation.end_time ? newReservation.end_time.toISOString() : null,
+      party_size: newReservation.partySize,
+      table_number: newReservation.tableId,
+      notes: newReservation.specialRequests,
+      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : null,
     };
 
     try {
@@ -813,16 +813,16 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guestId: newReservation.guestId,
-      guestName: newReservation.guestName,        // ✅ Correct field name
-      guestEmail: newReservation.guestEmail,      // ✅ Correct field name
+      guest_id: newReservation.guestId,           // ✅ Fixed: backend expects guest_id
+      customer_name: newReservation.guestName,    // ✅ Fixed: match backend field
+      customer_email: newReservation.guestEmail,  // ✅ Fixed: match backend field
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
-      partySize: selectedReservation.partySize,
-      tableNumber: selectedReservation.tableId, // Send table number as string
+      party_size: selectedReservation.partySize,  // ✅ Fixed: backend expects party_size
+      table_number: selectedReservation.tableId,  // ✅ Fixed: backend expects table_number
       status: selectedReservation.status,
-      specialRequests: newReservation.specialRequests, // ✅ Correct field name
-      endTime: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null,
+      notes: newReservation.specialRequests,      // ✅ Fixed: backend expects notes
+      end_time: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null,
     };
 
     try {
