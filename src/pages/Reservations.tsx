@@ -631,18 +631,15 @@ export default function Reservations(): JSX.Element {
 
     setIsSubmitting(true);
 
-    // Fixed payload structure to match backend expectations
+    // Payload structure to match backend expectations
     const payload = {
       guest_id: newReservation.guestId,
-      customer_name: newReservation.guestName,
-      customer_email: newReservation.guestEmail,
-      date: format(newReservation.date, 'yyyy-MM-dd'),
-      time: newReservation.time,
+      restaurant_id: import.meta.env.VITE_RESTAURANT_ID, // Using environment variable
+      table_id: newReservation.tableId,
+      date_time: `${format(newReservation.date, 'yyyy-MM-dd')}T${newReservation.time}:00.000Z`,
       party_size: newReservation.partySize,
-      table_number: newReservation.tableId,        // Try table_number instead of tableId
-      notes: newReservation.specialRequests,       // Try notes instead of specialRequests
-      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : null,
-      status: 'pending'                             // Add default status - might be required
+      status: 'pending',
+      notes: newReservation.specialRequests || ''
     };
 
     try {
@@ -814,16 +811,14 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guestId: selectedReservation.guestId,         // ✅ Correct
-      name: selectedReservation.guestName,          // ✅ Backend expects 'name'
-      guestEmail: selectedReservation.guestEmail,   // ✅ Correct
-      date: format(selectedReservation.date, 'yyyy-MM-dd'),
-      time: selectedReservation.time,
-      guests: selectedReservation.partySize,        // ✅ Backend expects 'guests'
-      tableId: selectedReservation.tableId,         // ✅ Backend expects 'tableId'
+      guest_id: selectedReservation.guestId,
+      restaurant_id: import.meta.env.VITE_RESTAURANT_ID, // Using environment variable
+      table_id: selectedReservation.tableId,
+      date_time: `${format(selectedReservation.date, 'yyyy-MM-dd')}T${selectedReservation.time}:00.000Z`,
+      party_size: selectedReservation.partySize,
       status: selectedReservation.status,
-      specialRequests: selectedReservation.specialRequests,
-      end_time: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null, // ✅ Backend expects 'end_time'
+      notes: selectedReservation.specialRequests || '',
+      // end_time is handled by the backend
     };
 
     try {
