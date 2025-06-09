@@ -181,46 +181,32 @@ export default function Reservations(): JSX.Element {
       }
       const data = await response.json();
       
-      interface ApiReservationItem {
-        id: string;
-        guestId?: string;
-        name: string;
-        guestEmail?: string;
-        guestInitials?: string;
-        date: string;
-        time: string;
-        end_time?: string | null;
-        guests: number;
-        tableId?: string;
-        status: string;
-        specialRequests?: string;
-        billAmount?: number;
-      }
-      
-      const transformedData: Reservation[] = data.map((item: ApiReservationItem) => ({
+      const transformedData: Reservation[] = data.map((item: any) => ({
         id: item.id,
-        guestId: item.guestId || '',
-        guestName: item.name,
-        guestEmail: item.guestEmail || '',
-        guestInitials: item.guestInitials || (item.name ? getInitials(item.name) : ''),
+        guestId: item.guestId || item.guest_id || '',  // Handle both camelCase and snake_case
+        guestName: item.guestName || item.name || item.customer_name || '',
+        guestEmail: item.guestEmail || item.email || item.customer_email || '',
+        guestInitials: getInitials(item.guestName || item.name || item.customer_name || ''),
         date: (() => {
-          if (item.date && typeof item.date === 'string' && item.date.trim() !== '') {
+          // Try to parse from either separate date field or datetime field
+          const dateStr = item.date || item.reservation_time || item.date_time;
+          if (dateStr && typeof dateStr === 'string' && dateStr.trim() !== '') {
             try {
-              return new Date(item.date);
+              return new Date(dateStr);
             } catch (e) {
-              console.error('Invalid date format from API:', item.date, e);
+              console.error('Invalid date format from API:', dateStr, e);
               return new Date();
             }
           }
           return new Date();
         })(),
-        time: item.time,
-        end_time: item.end_time ? new Date(item.end_time) : null,
-        partySize: item.guests,
-        tableId: item.tableId || '',
-        status: item.status as Reservation['status'],
-        specialRequests: item.specialRequests || '',
-        billAmount: item.billAmount
+        time: item.time || (item.reservation_time ? format(new Date(item.reservation_time), 'HH:mm') : ''),
+        end_time: item.endTime || item.end_time ? new Date(item.endTime || item.end_time) : null,
+        partySize: item.partySize || item.party_size || item.guests || 0,
+        tableId: item.tableNumber || item.tableId || item.table_id || '',  // Store table number
+        status: (item.status as Reservation['status']) || 'pending',
+        specialRequests: item.specialRequests || item.notes || '',
+        billAmount: item.billAmount || item.bill_amount
       }));
 
       setReservations(transformedData);
@@ -244,12 +230,34 @@ export default function Reservations(): JSX.Element {
   const performUpdateReservationStatus = useCallback(async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number): Promise<void> => {
     if (!selectedReservation) return;
 
+    // Define the payload type with all required fields and optional billAmount
     interface UpdatePayload {
+      guestId: string;
+      guestName: string;
+      guestEmail: string;
+      date: string;
+      time: string;
+      partySize: number;
+      tableNumber: string;
+      specialRequests: string;
       status: string;
       billAmount?: number;
     }
 
-    const payload: UpdatePayload = { status };
+    // Create payload with all required fields from the selected reservation
+    const payload: UpdatePayload = {
+      guestId: selectedReservation.guestId,
+      guestName: selectedReservation.guestName,
+      guestEmail: selectedReservation.guestEmail || '',
+      date: selectedReservation.date ? format(selectedReservation.date, 'yyyy-MM-dd') : '',
+      time: selectedReservation.time || '',
+      partySize: selectedReservation.partySize,
+      tableNumber: selectedReservation.tableId,
+      specialRequests: selectedReservation.specialRequests || '',
+      status: status,
+    };
+
+    // Add bill amount if status is completed
     if (status === 'completed') {
       if (billAmount === undefined || isNaN(billAmount) || billAmount <= 0) {
         toast({
@@ -259,6 +267,7 @@ export default function Reservations(): JSX.Element {
         });
         return;
       }
+      // @ts-ignore - Adding billAmount to payload
       payload.billAmount = billAmount;
     }
 
@@ -832,27 +841,20 @@ export default function Reservations(): JSX.Element {
 
     setIsEditSubmitting(true);
 
-    // Fixed payload structure to match backend expectations
-    console.log('Edit Reservation Payload:', JSON.stringify({
-      guest_id: selectedReservation.guestId,
-      restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
-      table_id: selectedReservation.tableId,
-      date_time: `${format(selectedReservation.date, 'yyyy-MM-dd')}T${selectedReservation.time}:00.000Z`,
-      party_size: selectedReservation.partySize,
-      status: selectedReservation.status,
-      notes: selectedReservation.specialRequests || ''
-    }, null, 2));
-    
+    // Correct payload structure matching backend expectations
     const payload = {
-      guest_id: selectedReservation.guestId,
-      restaurant_id: import.meta.env.VITE_RESTAURANT_ID, // Using environment variable
-      table_id: selectedReservation.tableId,
-      date_time: `${format(selectedReservation.date, 'yyyy-MM-dd')}T${selectedReservation.time}:00.000Z`,
-      party_size: selectedReservation.partySize,
-      status: selectedReservation.status,
-      notes: selectedReservation.specialRequests || '',
-      // end_time is handled by the backend
+      guestId: selectedReservation.guestId,
+      guestName: selectedReservation.guestName,
+      guestEmail: selectedReservation.guestEmail || '',
+      date: format(selectedReservation.date, 'yyyy-MM-dd'),
+      time: selectedReservation.time,
+      partySize: selectedReservation.partySize,
+      tableNumber: selectedReservation.tableId, // Using tableNumber instead of tableId
+      specialRequests: selectedReservation.specialRequests || '',
+      status: selectedReservation.status || 'pending'
     };
+
+    console.log('Sending update reservation payload:', payload);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
