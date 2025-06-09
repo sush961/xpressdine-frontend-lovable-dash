@@ -49,11 +49,11 @@ interface Table {
 const getTableName = (table: Table | string | undefined, tablesList: Table[] = []): string => {
   if (!table) return 'TBD';
   if (typeof table === 'string') {
-    // Try to find the table by ID for better display
-    const foundTable = tablesList.find(t => t.id === table);
-    return foundTable ? `T${foundTable.number}` : table.slice(0, 8) + '...'; // Show partial UUID as fallback
+    // Try to find the table by number
+    const foundTable = tablesList.find(t => t.number.toString() === table);
+    return foundTable ? `T${foundTable.number}` : `T${table}`;
   }
-  return `T${table.number}`; // Always generate T1, T2, T3, etc.
+  return `T${table.number}`;
 };
 
 // Updated frontend Reservation interface
@@ -67,7 +67,7 @@ interface Reservation {
   time: string; // From backend 'time' string
   end_time?: Date | null; // New: reservation end time
   partySize: number; // from party_size
-  tableId: string; // Changed from tableNumber, will store table_id (UUID)
+  tableId: string; // Changed from tableNumber, will store table number as string
   status: 'confirmed' | 'pending' | 'cancelled' | 'completed' | 'no-show'; // Expanded status
   specialRequests?: string; // from notes
   billAmount?: number; // from total_amount
@@ -136,7 +136,6 @@ export default function Reservations(): JSX.Element {
   const [isEditReservationOpen, setIsEditReservationOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [billAmountDialogOpen, setBillAmountDialogOpen] = useState(false);
-  const [isCreateGuestDialogOpen, setIsCreateGuestDialogOpen] = useState(false);
   
   // Current selection states
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
@@ -149,17 +148,12 @@ export default function Reservations(): JSX.Element {
   const [isGuestSearchLoading, setIsGuestSearchLoading] = useState(false);
   const [guestSearchError, setGuestSearchError] = useState<string | null>(null);
   
-  // New guest creation states
-  const [newGuestDetails, setNewGuestDetails] = useState({ name: '', email: '', phone: '' });
-  const [isCreatingGuest, setIsCreatingGuest] = useState(false);
-  const [createGuestError, setCreateGuestError] = useState<string | null>(null);
-  
   // Table states
   const [tables, setTables] = useState<Table[]>([]);
   const [isTablesLoading, setIsTablesLoading] = useState(true);
   const [tablesError, setTablesError] = useState<string | null>(null);
   
-  // Submission states - Fixed: Added missing state
+  // Submission states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   
@@ -378,75 +372,6 @@ export default function Reservations(): JSX.Element {
     fetchTables();
   }, [fetchReservations, fetchTables]);
 
-  const handleCreateGuest = async (): Promise<void> => {
-    if (!newGuestDetails.name.trim()) {
-      setCreateGuestError("Guest name is required.");
-      return;
-    }
-
-    setIsCreatingGuest(true);
-    setCreateGuestError(null);
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/customers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newGuestDetails.name,
-          email: newGuestDetails.email || null,
-          phone: newGuestDetails.phone || null,
-        }),
-      });
-
-      interface CreateGuestResponse {
-        id: string;
-        name: string;
-        email?: string;
-        error?: string;
-        message?: string;
-      }
-
-      const responseData = await response.json() as CreateGuestResponse;
-
-      if (!response.ok) {
-        console.error('Failed to create guest:', responseData);
-        setCreateGuestError(responseData.error || responseData.message || 'An unknown error occurred.');
-        setIsCreatingGuest(false);
-        return;
-      }
-
-      toast({
-        title: "Guest Created Successfully",
-        description: `${responseData.name} has been added to the system.`
-      });
-
-      setNewReservation(prev => ({
-        ...prev,
-        guestId: responseData.id,
-        guestName: responseData.name,
-        guestEmail: responseData.email || '',
-      }));
-      setGuestSearchTerm(responseData.name);
-      setGuestSearchResults([]);
-
-      setIsCreateGuestDialogOpen(false);
-      setNewGuestDetails({ name: '', email: '', phone: '' });
-      setIsCreatingGuest(false);
-
-    } catch (error: unknown) {
-      console.error('Network or unexpected error creating guest:', error);
-      let errorMessage = 'A network error occurred. Please try again.';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      setCreateGuestError(errorMessage);
-      setIsCreatingGuest(false);
-    }
-  };
-
   const rawFetchGuestSuggestions = useCallback(async (searchTerm: string): Promise<void> => {
     if (searchTerm.length < 2) {
       setGuestSearchResults([]);
@@ -627,7 +552,7 @@ export default function Reservations(): JSX.Element {
     performUpdateReservationStatus(status);
   };
 
-  const selectedTable = tables.find(t => t.id === newReservation.tableId);
+  const selectedTable = tables.find(t => t.number.toString() === newReservation.tableId);
 
   const handleAddReservation = async (): Promise<void> => {
     // Validate required fields
@@ -705,18 +630,18 @@ export default function Reservations(): JSX.Element {
     }
 
     setIsSubmitting(true);
-    const table = selectedTable;
 
+    // Fixed payload structure to match backend expectations
     const payload = {
       guestId: newReservation.guestId,
-      guestName: newReservation.guestName,
-      guestEmail: newReservation.guestEmail,
+      customerName: newReservation.guestName,
+      customerEmail: newReservation.guestEmail,
       date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
       partySize: newReservation.partySize,
-      tableNumber: table.number.toString(),
-      specialRequests: newReservation.specialRequests,
-      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : undefined,
+      tableNumber: newReservation.tableId, // Send table number as string
+      notes: newReservation.specialRequests,
+      endTime: newReservation.end_time ? newReservation.end_time.toISOString() : null,
     };
 
     try {
@@ -734,7 +659,7 @@ export default function Reservations(): JSX.Element {
         console.error('Failed to create reservation:', responseData);
         toast({
           title: "Error Creating Reservation",
-          description: responseData.error || responseData.details || 'An unknown error occurred.',
+          description: responseData.error || responseData.details || responseData.message || 'An unknown error occurred.',
           variant: "destructive"
         });
         setIsSubmitting(false);
@@ -743,16 +668,16 @@ export default function Reservations(): JSX.Element {
 
       const createdReservation: Reservation = {
         id: responseData.id,
-        guestId: responseData.guest_id,
-        guestName: responseData.customer_name,
-        guestEmail: responseData.customer_email || '',
-        guestInitials: (responseData.customer_name || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
-        date: new Date(responseData.reservation_time),
-        time: format(new Date(responseData.reservation_time), 'HH:mm'),
-        end_time: responseData.end_time ? new Date(responseData.end_time) : null,
-        partySize: responseData.party_size,
-        tableId: responseData.table_id,
-        status: responseData.status as Reservation['status'],
+        guestId: responseData.guest_id || responseData.guestId,
+        guestName: responseData.customer_name || responseData.customerName,
+        guestEmail: responseData.customer_email || responseData.customerEmail || '',
+        guestInitials: (responseData.customer_name || responseData.customerName || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
+        date: new Date(responseData.reservation_time || responseData.date),
+        time: format(new Date(responseData.reservation_time || `${responseData.date} ${responseData.time}`), 'HH:mm'),
+        end_time: responseData.end_time || responseData.endTime ? new Date(responseData.end_time || responseData.endTime) : null,
+        partySize: responseData.party_size || responseData.partySize,
+        tableId: responseData.table_number || responseData.tableNumber || responseData.table_id || responseData.tableId || '',
+        status: (responseData.status as Reservation['status']) || 'pending',
         specialRequests: responseData.notes || '',
       };
 
@@ -782,6 +707,7 @@ export default function Reservations(): JSX.Element {
       return;
     }
     
+    // Reset form
     setNewReservation({
       guestId: '',
       guestName: '',
@@ -800,7 +726,7 @@ export default function Reservations(): JSX.Element {
   const handleEditReservation = async (): Promise<void> => {
     if (!selectedReservation) return;
 
-    // Validation
+    // Validation (same as create)
     if (!selectedReservation.guestId) {
       toast({
         title: "Guest Required",
@@ -849,7 +775,7 @@ export default function Reservations(): JSX.Element {
       });
       return;
     }
-    const table = tables.find(t => t.id === selectedReservation.tableId);
+    const table = tables.find(t => t.number.toString() === selectedReservation.tableId);
     if (!table) {
       toast({
         title: "Invalid Table",
@@ -885,17 +811,18 @@ export default function Reservations(): JSX.Element {
 
     setIsEditSubmitting(true);
 
+    // Fixed payload structure to match backend expectations
     const payload = {
       guestId: selectedReservation.guestId,
-      guestName: selectedReservation.guestName,
-      guestEmail: selectedReservation.guestEmail,
+      customerName: selectedReservation.guestName,
+      customerEmail: selectedReservation.guestEmail,
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
       partySize: selectedReservation.partySize,
-      tableNumber: table.number.toString(),
+      tableNumber: selectedReservation.tableId, // Send table number as string
       status: selectedReservation.status,
-      specialRequests: selectedReservation.specialRequests,
-      end_time: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : undefined,
+      notes: selectedReservation.specialRequests,
+      endTime: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null,
     };
 
     try {
@@ -914,7 +841,7 @@ export default function Reservations(): JSX.Element {
         console.error('Failed to update reservation:', responseData);
         toast({
           title: "Error Updating Reservation",
-          description: responseData.error || responseData.details || 'An unknown error occurred.',
+          description: responseData.error || responseData.details || responseData.message || 'An unknown error occurred.',
           variant: "destructive"
         });
         return;
@@ -1047,20 +974,17 @@ export default function Reservations(): JSX.Element {
                         </div>
                       )}
                     </div>
-                    {/* Create Guest Button */}
+                    
+                    {/* Message when no guest selected or found */}
                     {guestSearchTerm && guestSearchResults.length === 0 && !isGuestSearchLoading && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setNewGuestDetails({ name: guestSearchTerm, email: '', phone: '' });
-                          setIsCreateGuestDialogOpen(true);
-                        }}
-                        className="w-full"
-                      >
-                        Create new guest: {guestSearchTerm}
-                      </Button>
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                        <p className="text-sm text-amber-800 mb-2">
+                          No guest found with that search term.
+                        </p>
+                        <p className="text-xs text-amber-700">
+                          Please go to the <Link to="/guests" className="underline font-medium">Guests module</Link> to create a new guest first, then return here to create the reservation.
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -1167,7 +1091,7 @@ export default function Reservations(): JSX.Element {
                               .map((table) => (
                                 <option 
                                   key={table.id} 
-                                  value={table.id}
+                                  value={table.number.toString()}
                                   disabled={table.status === 'occupied'}
                                   className={table.status === 'occupied' ? 'text-muted-foreground' : ''}
                                 >
@@ -1484,7 +1408,7 @@ export default function Reservations(): JSX.Element {
                     <span>
                       {getTableName(selectedReservation.tableId, tables)}
                       {(() => {
-                        const table = tables.find(t => t.id === selectedReservation.tableId);
+                        const table = tables.find(t => t.number.toString() === selectedReservation.tableId);
                         return table ? ` (Seats: ${table.capacity})` : '';
                       })()}
                     </span>
@@ -1613,7 +1537,7 @@ export default function Reservations(): JSX.Element {
                           >
                             <option value="">Select a table</option>
                             {tables.map((table) => (
-                              <option key={table.id} value={table.id}>
+                              <option key={table.id} value={table.number.toString()}>
                                 T{table.number} (Seats: {table.capacity})
                               </option>
                             ))}
@@ -1665,63 +1589,6 @@ export default function Reservations(): JSX.Element {
             </div>
           </div>
         )}
-
-        {/* Create Guest Dialog */}
-        <Dialog open={isCreateGuestDialogOpen} onOpenChange={setIsCreateGuestDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Create New Guest</DialogTitle>
-              <DialogDescription>
-                Add a new guest to the system before creating the reservation.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="new-guest-name">Name *</Label>
-                <Input
-                  id="new-guest-name"
-                  value={newGuestDetails.name}
-                  onChange={(e) => setNewGuestDetails({...newGuestDetails, name: e.target.value})}
-                  placeholder="Enter guest name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-guest-email">Email</Label>
-                <Input
-                  id="new-guest-email"
-                  type="email"
-                  value={newGuestDetails.email}
-                  onChange={(e) => setNewGuestDetails({...newGuestDetails, email: e.target.value})}
-                  placeholder="Enter email address"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-guest-phone">Phone</Label>
-                <Input
-                  id="new-guest-phone"
-                  type="tel"
-                  value={newGuestDetails.phone}
-                  onChange={(e) => setNewGuestDetails({...newGuestDetails, phone: e.target.value})}
-                  placeholder="Enter phone number"
-                />
-              </div>
-              {createGuestError && (
-                <p className="text-sm text-destructive">{createGuestError}</p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateGuestDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleCreateGuest}
-                disabled={isCreatingGuest || !newGuestDetails.name.trim()}
-              >
-                {isCreatingGuest ? 'Creating...' : 'Create Guest'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
         
         <Dialog open={billAmountDialogOpen} onOpenChange={setBillAmountDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
