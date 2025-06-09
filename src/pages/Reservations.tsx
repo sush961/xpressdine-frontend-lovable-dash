@@ -652,11 +652,12 @@ export default function Reservations(): JSX.Element {
 
     // Payload structure to match backend expectations
     const payload = {
-      guest_id: newReservation.guestId,
-      restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
-      table_id: newReservation.tableId,
-      date_time: `${format(newReservation.date, 'yyyy-MM-dd')}T${newReservation.time}:00.000Z`,
-      party_size: newReservation.partySize,
+      guestId: newReservation.guestId,         // ✅ camelCase
+      restaurantId: import.meta.env.VITE_RESTAURANT_ID,  // ✅ camelCase
+      tableId: newReservation.tableId,         // ✅ camelCase
+      date: format(newReservation.date, 'yyyy-MM-dd'),   // ✅ separate date
+      time: newReservation.time,               // ✅ separate time
+      partySize: newReservation.partySize,     // ✅ camelCase
       status: 'pending',
       notes: newReservation.specialRequests || ''
     };
