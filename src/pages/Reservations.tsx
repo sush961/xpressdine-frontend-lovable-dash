@@ -59,7 +59,7 @@ const getTableName = (table: Table | string | undefined, tablesList: Table[] = [
 // Updated frontend Reservation interface
 interface Reservation {
   id: string;
-  guestId: string; // from guest_id
+  guestId?: string; // Optional: from guest_id
   guestName: string; // from customer_name
   guestEmail?: string; // from customer_email, made optional
   guestInitials: string; // Derived from customer_name
@@ -158,13 +158,25 @@ export default function Reservations(): JSX.Element {
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   
   // New reservation form state
-  const [newReservation, setNewReservation] = useState({
-    guestId: guestIdFromQuery || '',
+  interface NewReservationState {
+    guestId?: string;
+    guestName: string;
+    guestEmail: string;
+    date: Date;
+    time: string;
+    end_time: Date | null;
+    partySize: number;
+    tableId: string;
+    specialRequests: string;
+  }
+
+  const [newReservation, setNewReservation] = useState<NewReservationState>({
+    guestId: guestIdFromQuery || undefined,
     guestName: '', 
     guestEmail: '',
     date: new Date(),
     time: '19:00',
-    end_time: null as Date | null,
+    end_time: null,
     partySize: 2,
     tableId: '',
     specialRequests: ''
@@ -631,46 +643,35 @@ export default function Reservations(): JSX.Element {
       });
       return;
     }
-    if (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) {
-      toast({
-        title: "Invalid Email",
-        description: "Please enter a valid email address.",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (newReservation.specialRequests && newReservation.specialRequests.length > 250) {
-      toast({
-        title: "Special Requests Too Long",
-        description: "Special requests must be 250 characters or less.",
-        variant: "destructive"
-      });
-      return;
-    }
 
     setIsSubmitting(true);
 
-    // Transform data to match backend's expected format
-    const payload = {
-      // Required fields
-      guestId: newReservation.guestId,
-      guestName: newReservation.guestName,  // Required by backend
-      guestEmail: newReservation.guestEmail, // Required by backend
-      date: format(newReservation.date, 'yyyy-MM-dd'),
-      time: newReservation.time,
-      partySize: Number(newReservation.partySize),
-      
-      // Table reference - using tableId
-      tableId: newReservation.tableId,
-      
-      // Optional fields
-      specialRequests: newReservation.specialRequests || '',
-      status: 'pending'
-    };
-    
-    console.log('Sending payload to backend:', JSON.stringify(payload, null, 2));
-
     try {
+      // Prepare the payload with required fields
+      const payload: {
+        guestName: string;
+        guestEmail: string;
+        date: string;
+        time: string;
+        partySize: number;
+        tableId: string;
+        specialRequests?: string;
+        guestId?: string;
+      } = {
+        guestName: newReservation.guestName,
+        guestEmail: newReservation.guestEmail,
+        date: format(newReservation.date, 'yyyy-MM-dd'),
+        time: newReservation.time,
+        partySize: Number(newReservation.partySize),
+        tableId: newReservation.tableId,
+        specialRequests: newReservation.specialRequests || undefined,
+      };
+      
+      // Only include guestId if it exists
+      if (newReservation.guestId) {
+        payload.guestId = newReservation.guestId;
+      }
+
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`, {
         method: 'POST',
         headers: {
@@ -688,63 +689,52 @@ export default function Reservations(): JSX.Element {
           description: responseData.error || responseData.details || responseData.message || 'An unknown error occurred.',
           variant: "destructive"
         });
-        setIsSubmitting(false);
         return;
       }
 
-      const createdReservation: Reservation = {
-        id: responseData.id,
-        guestId: responseData.guest_id || responseData.guestId,
-        guestName: responseData.customer_name || responseData.customerName,
-        guestEmail: responseData.customer_email || responseData.customerEmail || '',
-        guestInitials: (responseData.customer_name || responseData.customerName || "GU").split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'GU',
-        date: new Date(responseData.reservation_time || responseData.date),
-        time: format(new Date(responseData.reservation_time || `${responseData.date} ${responseData.time}`), 'HH:mm'),
-        end_time: responseData.end_time || responseData.endTime ? new Date(responseData.end_time || responseData.endTime) : null,
-        partySize: responseData.party_size || responseData.partySize,
-        tableId: responseData.table_number || responseData.tableNumber || responseData.table_id || responseData.tableId || '',
-        status: (responseData.status as Reservation['status']) || 'pending',
-        specialRequests: responseData.notes || '',
-      };
-
-      fetchReservations();
-      setIsAddReservationOpen(false);
-      setIsSubmitting(false);
-
+      // Success - show success message and reset form
       toast({
-        title: "Reservation Created Successfully",
-        description: `Reservation for ${createdReservation.guestName} on ${format(createdReservation.date, 'PPP')} at ${createdReservation.time} has been created.`
+        title: "Reservation Created",
+        description: `Reservation for ${responseData.guestName} has been created successfully.`,
+        variant: "default"
       });
 
-    } catch (error: unknown) {
-      setIsSubmitting(false);
-      console.error('Network or unexpected error creating reservation:', error);
-      let errorMessage = 'A network error occurred. Please try again.';
+      // Reset form
+      setNewReservation({
+        guestId: guestIdFromQuery || undefined,
+        guestName: '',
+        guestEmail: '',
+        date: new Date(),
+        time: '19:00',
+        end_time: null,
+        partySize: 2,
+        tableId: '',
+        specialRequests: ''
+      });
+
+      // Close the dialog and refresh reservations
+      setIsAddReservationOpen(false);
+      if (typeof fetchReservations === 'function') {
+        await fetchReservations();
+      }
+    } catch (error) {
+      console.error('Error creating reservation:', error);
+      let errorMessage = 'An unexpected error occurred while creating the reservation.';
+      
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {
         errorMessage = error;
       }
+      
       toast({
-        title: "Creation Failed",
+        title: "Error Creating Reservation",
         description: errorMessage,
         variant: "destructive"
       });
-      return;
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    // Reset form
-    setNewReservation({
-      guestId: '',
-      guestName: '',
-      guestEmail: '',
-      date: new Date(),
-      time: '19:00',
-      end_time: null,
-      partySize: 2,
-      tableId: '',
-      specialRequests: ''
-    });
     setGuestSearchTerm('');
     setGuestSearchResults([]);
   };
