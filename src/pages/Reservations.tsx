@@ -652,9 +652,6 @@ export default function Reservations(): JSX.Element {
 
     // Payload structure to match backend expectations
     const payload = {
-      // Debug: Log the payload before sending
-      // @ts-ignore - VITE_RESTAURANT_ID is defined in .env
-      debug_restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
       guest_id: newReservation.guestId,
       restaurant_id: import.meta.env.VITE_RESTAURANT_ID,
       table_id: newReservation.tableId,
@@ -1122,7 +1119,7 @@ export default function Reservations(): JSX.Element {
                               .map((table) => (
                                 <option 
                                   key={table.id} 
-                                  value={table.number.toString()}
+                                  value={table.id}
                                   disabled={table.status === 'occupied'}
                                   className={table.status === 'occupied' ? 'text-muted-foreground' : ''}
                                 >
