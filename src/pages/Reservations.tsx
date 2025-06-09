@@ -633,15 +633,15 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guest_id: newReservation.guestId,
-      customer_name: newReservation.guestName,
-      customer_email: newReservation.guestEmail,
+      guestId: newReservation.guestId,              // ✅ Correct
+      name: newReservation.guestName,               // ✅ Backend expects 'name' not 'guestName'
+      guestEmail: newReservation.guestEmail,        // ✅ Correct
       date: format(newReservation.date, 'yyyy-MM-dd'),
       time: newReservation.time,
-      party_size: newReservation.partySize,
-      table_number: newReservation.tableId,
-      notes: newReservation.specialRequests,
-      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : null,
+      guests: newReservation.partySize,             // ✅ Backend expects 'guests' not 'partySize'
+      tableId: newReservation.tableId,              // ✅ Backend expects 'tableId' not 'tableNumber'
+      specialRequests: newReservation.specialRequests,
+      end_time: newReservation.end_time ? newReservation.end_time.toISOString() : null, // ✅ Backend expects 'end_time' not 'endTime'
     };
 
     try {
@@ -813,16 +813,16 @@ export default function Reservations(): JSX.Element {
 
     // Fixed payload structure to match backend expectations
     const payload = {
-      guest_id: newReservation.guestId,           // ✅ Fixed: backend expects guest_id
-      customer_name: newReservation.guestName,    // ✅ Fixed: match backend field
-      customer_email: newReservation.guestEmail,  // ✅ Fixed: match backend field
+      guestId: selectedReservation.guestId,         // ✅ Correct
+      name: selectedReservation.guestName,          // ✅ Backend expects 'name'
+      guestEmail: selectedReservation.guestEmail,   // ✅ Correct
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
-      party_size: selectedReservation.partySize,  // ✅ Fixed: backend expects party_size
-      table_number: selectedReservation.tableId,  // ✅ Fixed: backend expects table_number
+      guests: selectedReservation.partySize,        // ✅ Backend expects 'guests'
+      tableId: selectedReservation.tableId,         // ✅ Backend expects 'tableId'
       status: selectedReservation.status,
-      notes: newReservation.specialRequests,      // ✅ Fixed: backend expects notes
-      end_time: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null,
+      specialRequests: selectedReservation.specialRequests,
+      end_time: selectedReservation.end_time ? selectedReservation.end_time.toISOString() : null, // ✅ Backend expects 'end_time'
     };
 
     try {
