@@ -159,6 +159,7 @@ const reservationIdFromQuery = queryParams.get('id');
   interface NewReservationState {
     guestName: string;
     guestEmail: string;
+    guestPhone: string;
     date: Date;
     time: string;
     end_time: Date | null;
@@ -167,9 +168,11 @@ const reservationIdFromQuery = queryParams.get('id');
     specialRequests: string;
   }
 
+  // Initialize new reservation with default values
   const [newReservation, setNewReservation] = useState<NewReservationState>({
     guestName: '', 
     guestEmail: '',
+    guestPhone: '',
     date: new Date(),
     time: '19:00',
     end_time: null,
@@ -619,6 +622,7 @@ const reservationIdFromQuery = queryParams.get('id');
       const payload = {
         guestName: newReservation.guestName,
         guestEmail: newReservation.guestEmail,
+        guestPhone: newReservation.guestPhone,
         date: format(newReservation.date, 'yyyy-MM-dd'),
         time: newReservation.time,
         partySize: Number(newReservation.partySize),
@@ -657,6 +661,7 @@ const reservationIdFromQuery = queryParams.get('id');
       setNewReservation({
         guestName: '',
         guestEmail: '',
+        guestPhone: '',
         date: new Date(),
         time: '19:00',
         end_time: null,
@@ -921,9 +926,9 @@ const reservationIdFromQuery = queryParams.get('id');
                               onClick={() => {
                                 setNewReservation(prev => ({
                                   ...prev,
-
                                   guestName: guest.name,
                                   guestEmail: guest.email || '',
+                                  guestPhone: guest.phone || ''
                                 }));
                                 setGuestSearchTerm(guest.name);
                                 setGuestSearchResults([]);
@@ -1086,27 +1091,29 @@ const reservationIdFromQuery = queryParams.get('id');
                     />
                   </div>
                 </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
-                  <Button
-                    onClick={handleAddReservation}
-                    disabled={
-                      !newReservation.guestName ||
-                      !newReservation.date ||
-                      !newReservation.time ||
-                      !newReservation.partySize ||
-                      !newReservation.tableId ||
-                      isSubmitting ||
-                      (selectedTable && newReservation.partySize > selectedTable.capacity) ||
-                      (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) ||
-                      (newReservation.specialRequests && newReservation.specialRequests.length > 250)
-                    }
-                  >
-                    {isSubmitting ? 'Creating...' : 'Create Reservation'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={handleAddReservation}
+                  disabled={
+                    !newReservation.guestName ||
+                    !newReservation.guestPhone ||
+                    !newReservation.date ||
+                    !newReservation.time ||
+                    !newReservation.partySize ||
+                    !newReservation.tableId ||
+                    isSubmitting ||
+                    (selectedTable && newReservation.partySize > selectedTable.capacity) ||
+                    (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) ||
+                    (newReservation.specialRequests && newReservation.specialRequests.length > 250)
+                  }
+                >
+                  {isSubmitting ? 'Creating...' : 'Create Reservation'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           </div>
         </div>
 
