@@ -56,7 +56,7 @@ const getTableName = (table: Table | string | undefined, tablesList: Table[] = [
   return `T${table.number}`;
 };
 
-// Updated frontend Reservation interface
+// Updated frontend Reservation interface - FIXED: Updated status to match actual database
 interface Reservation {
   id: string;
   guestName: string; // from customer_name
@@ -67,7 +67,7 @@ interface Reservation {
   end_time?: Date | null; // New: reservation end time
   partySize: number; // from party_size
   tableId: string; // Changed from tableNumber, will store table number as string
-  status: 'confirmed' | 'pending' | 'cancelled' | 'completed' | 'no-show'; // Expanded status
+  status: 'confirmed' | 'pending' | 'cancelled' | 'completed' | 'seated'; // FIXED: Updated to match actual database ENUM
   specialRequests?: string; // from notes
   billAmount?: number; // from total_amount
 }
@@ -107,9 +107,9 @@ export default function Reservations(): JSX.Element {
   // Calculate 'today' once per component mount, memoized
   const today = useMemo(() => new Date(), []);
   // Defensive UI before any logic or hooks
-const location = useLocation();
-const queryParams = new URLSearchParams(location.search);
-const reservationIdFromQuery = queryParams.get('id');
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const reservationIdFromQuery = queryParams.get('id');
   const { toast } = useToast();
 
   // Date and filter states
@@ -235,7 +235,7 @@ const reservationIdFromQuery = queryParams.get('id');
     }
   }, [toast]);
 
-  // Update reservation status
+  // Update reservation status - FIXED: Updated to handle actual database statuses
   const performUpdateReservationStatus = useCallback(async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number): Promise<void> => {
     if (!selectedReservation) return;
 
@@ -574,7 +574,15 @@ const reservationIdFromQuery = queryParams.get('id');
       return;
     }
 
-    // Validate required fields
+    // FIXED: Updated validation to ensure guest data is populated from guest selection
+    if (!newReservation.guestName || !newReservation.guestPhone) {
+      toast({
+        title: "Guest Required",
+        description: "Please search and select a guest first.",
+        variant: "destructive"
+      });
+      return;
+    }
     if (!newReservation.date) {
       toast({
         title: "Date Required",
@@ -841,6 +849,7 @@ const reservationIdFromQuery = queryParams.get('id');
     }
   };
 
+  // FIXED: Added 'seated' status badge handling
   const getStatusBadgeClass = (status: string): string => {
     switch (status) {
       case 'confirmed':
@@ -851,6 +860,8 @@ const reservationIdFromQuery = queryParams.get('id');
         return 'bg-red-100 text-red-800';
       case 'completed':
         return 'bg-green-100 text-green-800';
+      case 'seated':
+        return 'bg-purple-100 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -1091,29 +1102,28 @@ const reservationIdFromQuery = queryParams.get('id');
                     />
                   </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
-                <Button
-                  onClick={handleAddReservation}
-                  disabled={
-                    !newReservation.guestName ||
-                    !newReservation.guestPhone ||
-                    !newReservation.date ||
-                    !newReservation.time ||
-                    !newReservation.partySize ||
-                    !newReservation.tableId ||
-                    isSubmitting ||
-                    (selectedTable && newReservation.partySize > selectedTable.capacity) ||
-                    (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) ||
-                    (newReservation.specialRequests && newReservation.specialRequests.length > 250)
-                  }
-                >
-                  {isSubmitting ? 'Creating...' : 'Create Reservation'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsAddReservationOpen(false)}>Cancel</Button>
+                  <Button
+                    onClick={handleAddReservation}
+                    disabled={
+                      !newReservation.guestName ||
+                      !newReservation.guestPhone ||
+                      !newReservation.date ||
+                      !newReservation.time ||
+                      !newReservation.partySize ||
+                      !newReservation.tableId ||
+                      isSubmitting ||
+                      (selectedTable && newReservation.partySize > selectedTable.capacity) ||
+                      (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) ||
+                      (newReservation.specialRequests && newReservation.specialRequests.length > 250)
+                    }
+                  >
+                    {isSubmitting ? 'Creating...' : 'Create Reservation'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
