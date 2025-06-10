@@ -623,7 +623,7 @@ const reservationIdFromQuery = queryParams.get('id');
         time: newReservation.time,
         partySize: Number(newReservation.partySize),
         tableId: newReservation.tableId,
-        specialRequests: newReservation.specialRequests || undefined,
+        special_requests: newReservation.specialRequests || undefined,
       }
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`, {
@@ -781,7 +781,7 @@ const reservationIdFromQuery = queryParams.get('id');
       time: selectedReservation.time,
       partySize: selectedReservation.partySize,
       tableNumber: selectedReservation.tableId,
-      specialRequests: selectedReservation.specialRequests || '',
+      special_requests: selectedReservation.specialRequests || '',
       status: selectedReservation.status || 'pending'
     };
 
