@@ -59,7 +59,6 @@ const getTableName = (table: Table | string | undefined, tablesList: Table[] = [
 // Updated frontend Reservation interface
 interface Reservation {
   id: string;
-  guestId?: string; // Optional: from guest_id
   guestName: string; // from customer_name
   guestEmail?: string; // from customer_email, made optional
   guestInitials: string; // Derived from customer_name
@@ -108,10 +107,9 @@ export default function Reservations(): JSX.Element {
   // Calculate 'today' once per component mount, memoized
   const today = useMemo(() => new Date(), []);
   // Defensive UI before any logic or hooks
-  const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const guestIdFromQuery = queryParams.get('guest');
-  const reservationIdFromQuery = queryParams.get('id');
+const location = useLocation();
+const queryParams = new URLSearchParams(location.search);
+const reservationIdFromQuery = queryParams.get('id');
   const { toast } = useToast();
 
   // Date and filter states
@@ -159,7 +157,6 @@ export default function Reservations(): JSX.Element {
   
   // New reservation form state
   interface NewReservationState {
-    guestId?: string;
     guestName: string;
     guestEmail: string;
     date: Date;
@@ -171,7 +168,6 @@ export default function Reservations(): JSX.Element {
   }
 
   const [newReservation, setNewReservation] = useState<NewReservationState>({
-    guestId: guestIdFromQuery || undefined,
     guestName: '', 
     guestEmail: '',
     date: new Date(),
@@ -195,12 +191,10 @@ export default function Reservations(): JSX.Element {
       
       const transformedData: Reservation[] = data.map((item: any) => ({
         id: item.id,
-        guestId: item.guestId || item.guest_id || '',  // Handle both camelCase and snake_case
         guestName: item.guestName || item.name || item.customer_name || '',
         guestEmail: item.guestEmail || item.email || item.customer_email || '',
         guestInitials: getInitials(item.guestName || item.name || item.customer_name || ''),
         date: (() => {
-          // Try to parse from either separate date field or datetime field
           const dateStr = item.date || item.reservation_time || item.date_time;
           if (dateStr && typeof dateStr === 'string' && dateStr.trim() !== '') {
             try {
@@ -215,7 +209,7 @@ export default function Reservations(): JSX.Element {
         time: item.time || (item.reservation_time ? format(new Date(item.reservation_time), 'HH:mm') : ''),
         end_time: item.endTime || item.end_time ? new Date(item.endTime || item.end_time) : null,
         partySize: item.partySize || item.party_size || item.guests || 0,
-        tableId: item.tableNumber || item.tableId || item.table_id || '',  // Store table number
+        tableId: item.tableNumber || item.tableId || item.table_id || '',
         status: (item.status as Reservation['status']) || 'pending',
         specialRequests: item.specialRequests || item.notes || '',
         billAmount: item.billAmount || item.bill_amount
@@ -242,9 +236,7 @@ export default function Reservations(): JSX.Element {
   const performUpdateReservationStatus = useCallback(async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number): Promise<void> => {
     if (!selectedReservation) return;
 
-    // Define the payload type with all required fields and optional billAmount
     interface UpdatePayload {
-      guestId: string;
       guestName: string;
       guestEmail: string;
       date: string;
@@ -256,9 +248,7 @@ export default function Reservations(): JSX.Element {
       billAmount?: number;
     }
 
-    // Create payload with all required fields from the selected reservation
     const payload: UpdatePayload = {
-      guestId: selectedReservation.guestId,
       guestName: selectedReservation.guestName,
       guestEmail: selectedReservation.guestEmail || '',
       date: selectedReservation.date ? format(selectedReservation.date, 'yyyy-MM-dd') : '',
@@ -435,7 +425,7 @@ export default function Reservations(): JSX.Element {
     }
   }, [reservationIdFromQuery, reservations]);
 
-  // Filter reservations based on date range, status, and guest
+  // Filter reservations based on date range and status
   useEffect(() => {
     let filtered = reservations;
     
@@ -477,13 +467,8 @@ export default function Reservations(): JSX.Element {
       filtered = filtered.filter(reservation => reservation.status === statusFilter);
     }
     
-    // Filter by guest if specified in URL
-    if (guestIdFromQuery) {
-      filtered = filtered.filter(reservation => reservation.guestId === guestIdFromQuery);
-    }
-    
     setFilteredReservations(filtered);
-  }, [dateFilter, dateRange, statusFilter, guestIdFromQuery, reservations, today]);
+  }, [dateFilter, dateRange, statusFilter, reservations, today]);
 
   const handleBillConfirm = useCallback((): void => {
     if (!currentBillAmount.trim() || isNaN(Number(currentBillAmount))) {
@@ -587,22 +572,6 @@ export default function Reservations(): JSX.Element {
     }
 
     // Validate required fields
-    if (!newReservation.guestId) {
-      toast({
-        title: "Guest Required",
-        description: "Please search and select a guest for the reservation.",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (!newReservation.guestName) {
-      toast({
-        title: "Guest Name Required",
-        description: "Guest name is required.",
-        variant: "destructive"
-      });
-      return;
-    }
     if (!newReservation.date) {
       toast({
         title: "Date Required",
@@ -647,17 +616,7 @@ export default function Reservations(): JSX.Element {
     setIsSubmitting(true);
 
     try {
-      // Prepare the payload with required fields
-      const payload: {
-        guestName: string;
-        guestEmail: string;
-        date: string;
-        time: string;
-        partySize: number;
-        tableId: string;
-        specialRequests?: string;
-        guestId?: string;
-      } = {
+      const payload = {
         guestName: newReservation.guestName,
         guestEmail: newReservation.guestEmail,
         date: format(newReservation.date, 'yyyy-MM-dd'),
@@ -665,11 +624,6 @@ export default function Reservations(): JSX.Element {
         partySize: Number(newReservation.partySize),
         tableId: newReservation.tableId,
         specialRequests: newReservation.specialRequests || undefined,
-      };
-      
-      // Only include guestId if it exists
-      if (newReservation.guestId) {
-        payload.guestId = newReservation.guestId;
       }
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`, {
@@ -701,7 +655,6 @@ export default function Reservations(): JSX.Element {
 
       // Reset form
       setNewReservation({
-        guestId: guestIdFromQuery || undefined,
         guestName: '',
         guestEmail: '',
         date: new Date(),
@@ -753,22 +706,6 @@ export default function Reservations(): JSX.Element {
     }
 
     // Validation (same as create)
-    if (!selectedReservation.guestId) {
-      toast({
-        title: "Guest Required",
-        description: "Please search and select a guest for the reservation.",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (!selectedReservation.guestName) {
-      toast({
-        title: "Guest Name Required",
-        description: "Guest name is required.",
-        variant: "destructive"
-      });
-      return;
-    }
     if (!selectedReservation.date) {
       toast({
         title: "Date Required",
@@ -837,15 +774,13 @@ export default function Reservations(): JSX.Element {
 
     setIsEditSubmitting(true);
 
-    // Correct payload structure matching backend expectations
     const payload = {
-      guestId: selectedReservation.guestId,
       guestName: selectedReservation.guestName,
       guestEmail: selectedReservation.guestEmail || '',
       date: format(selectedReservation.date, 'yyyy-MM-dd'),
       time: selectedReservation.time,
       partySize: selectedReservation.partySize,
-      tableNumber: selectedReservation.tableId, // Using tableNumber instead of tableId
+      tableNumber: selectedReservation.tableId,
       specialRequests: selectedReservation.specialRequests || '',
       status: selectedReservation.status || 'pending'
     };
@@ -986,7 +921,7 @@ export default function Reservations(): JSX.Element {
                               onClick={() => {
                                 setNewReservation(prev => ({
                                   ...prev,
-                                  guestId: guest.id,
+
                                   guestName: guest.name,
                                   guestEmail: guest.email || '',
                                 }));
@@ -1003,7 +938,7 @@ export default function Reservations(): JSX.Element {
                     </div>
                     
                     {/* Message when no guest selected or found */}
-                    {guestSearchTerm && guestSearchResults.length === 0 && !isGuestSearchLoading && !newReservation.guestId && (
+                    {guestSearchTerm && guestSearchResults.length === 0 && !isGuestSearchLoading && !newReservation.guestName && (
                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
                         <p className="text-sm text-amber-800 mb-2">
                           No guest found with that search term.
@@ -1156,7 +1091,6 @@ export default function Reservations(): JSX.Element {
                   <Button
                     onClick={handleAddReservation}
                     disabled={
-                      !newReservation.guestId ||
                       !newReservation.guestName ||
                       !newReservation.date ||
                       !newReservation.time ||
@@ -1593,11 +1527,6 @@ export default function Reservations(): JSX.Element {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              <Link to={`/guests?id=${selectedReservation.guestId}`}>
-                <Button variant="outline" className="bg-white">
-                  View Guest Profile
-                </Button>
-              </Link>
               {selectedReservation.status === 'confirmed' && (
                 <Button 
                   variant="outline" 

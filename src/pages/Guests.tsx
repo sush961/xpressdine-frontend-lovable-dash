@@ -292,12 +292,11 @@ export default function Guests() {
       console.log('[Guests.tsx] Attempting to delete guest:', guestId);
       
       const result = await ApiClient.delete<{ error: string | null }>(`/customers/${guestId}`);
-      console.log('[Guests.tsx] Delete response:', result);
       
       if (result.error) {
         throw new Error(result.error);
       }
-      
+
       // Refresh the guests list
       await fetchGuests();
       
@@ -305,7 +304,6 @@ export default function Guests() {
         title: "Success",
         description: "Guest deleted successfully",
       });
-      
     } catch (error) {
       console.error('Failed to delete guest:', error);
       toast({
