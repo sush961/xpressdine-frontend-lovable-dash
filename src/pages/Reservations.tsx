@@ -235,48 +235,23 @@ export default function Reservations(): JSX.Element {
     }
   }, [toast]);
 
-  // Update reservation status - FIXED: Updated to handle actual database statuses
+  // Update reservation status - Simplified to only send status and bill amount
   const performUpdateReservationStatus = useCallback(async (status: 'confirmed' | 'pending' | 'cancelled' | 'completed', billAmount?: number): Promise<void> => {
     if (!selectedReservation) return;
 
-    interface UpdatePayload {
-      guestName: string;
-      guestEmail: string;
-      date: string;
-      time: string;
-      partySize: number;
-      tableNumber: string;
-      specialRequests: string;
-      status: string;
-      billAmount?: number;
-    }
-
-    const payload: UpdatePayload = {
-      guestName: selectedReservation.guestName,
-      guestEmail: selectedReservation.guestEmail || '',
-      date: selectedReservation.date ? format(selectedReservation.date, 'yyyy-MM-dd') : '',
-      time: selectedReservation.time || '',
-      partySize: selectedReservation.partySize,
-      tableNumber: selectedReservation.tableId,
-      specialRequests: selectedReservation.specialRequests || '',
-      status: status,
-    };
-
-    // Add bill amount if status is completed
-    if (status === 'completed') {
-      if (billAmount === undefined || isNaN(billAmount) || billAmount <= 0) {
-        toast({
-          title: "Invalid Bill Amount",
-          description: "A valid bill amount is required to complete a reservation.",
-          variant: "destructive",
-        });
-        return;
-      }
-      // @ts-ignore - Adding billAmount to payload
-      payload.billAmount = billAmount;
-    }
-
     try {
+      // FIXED: Send minimal payload to avoid backend processing issues
+      const payload: any = {
+        status: status
+      };
+
+      // Only add billAmount for completed status
+      if (status === 'completed' && billAmount !== undefined) {
+        payload.billAmount = billAmount;
+      }
+
+      console.log('Sending status update:', payload);
+
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -284,8 +259,8 @@ export default function Reservations(): JSX.Element {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to update reservation status.' }));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+        throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
       }
 
       toast({
