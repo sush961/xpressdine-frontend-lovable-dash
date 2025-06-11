@@ -133,7 +133,6 @@ export default function Reservations(): JSX.Element {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const reservationIdFromQuery = queryParams.get('id');
-  const { handleLinkTables } = useTableManager();
   const { toast } = useToast();
 
   // Date and filter states
@@ -744,7 +743,7 @@ export default function Reservations(): JSX.Element {
         throw new Error(responseData.error || responseData.message || 'Failed to create reservation');
       }
 
-      // Auto-link tables if linking was enabled
+      // Add table linking info to notes if linking is enabled
       if (linkTables && selectedTableIds.length > 1) {
         // Create linking notes
         const tableNames = selectedTableIds.map(id => {
@@ -752,22 +751,21 @@ export default function Reservations(): JSX.Element {
           return `Table ${table?.number}`;
         }).join(', ');
         
-        // Update reservation notes with linking info
-        const updatedNotes = `${newReservation.specialRequests || ''}\nLinked Tables: ${tableNames}`.trim();
+        // Add linking info to notes (NO table linking, just notes)
+        const linkingNotes = `\nLinked Tables: ${tableNames}`;
         
-        // Update the reservation with linked tables info
+        // Update the reservation with linked tables info in notes
         await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${responseData.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ special_requests: updatedNotes })
+          body: JSON.stringify({ 
+            special_requests: (newReservation.specialRequests || '') + linkingNotes 
+          })
         });
         
-        // Auto-link tables in table view (uses existing frontend logic)
-        handleLinkTables(selectedTableIds);
-        
         toast({
-          title: "Tables Linked",
-          description: `Successfully linked ${selectedTableIds.length} tables for this reservation`,
+          title: "Reservation Created with Linked Tables",
+          description: `Reservation created for ${tableNames}`,
           variant: "default"
         });
       }
@@ -806,7 +804,7 @@ export default function Reservations(): JSX.Element {
         variant: "destructive"
       });
     }
-  }, [toast, newReservation, selectedTable, linkTables, selectedTableIds, tables, handleLinkTables]);
+  }, [toast, newReservation, selectedTable, linkTables, selectedTableIds, tables]);
 
   const handleEditReservation = useCallback(async (): Promise<void> => {
     if (!selectedReservation) return;
