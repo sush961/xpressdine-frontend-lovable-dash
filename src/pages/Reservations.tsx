@@ -262,30 +262,42 @@ export default function Reservations(): JSX.Element {
     status: 'confirmed' | 'pending' | 'cancelled' | 'completed', 
     billAmount?: number
   ): Promise<void> => {
-    if (!selectedReservation) return;
+    if (!selectedReservation) {
+      toast({
+        title: "Error",
+        description: "No reservation selected.",
+        variant: "destructive"
+      });
+      return;
+    }
 
+    const originalStatus = selectedReservation.status;
+    const originalBillAmount = selectedReservation.billAmount;
+
+    // OPTIMISTIC UPDATE: Update UI immediately
     const updates: Partial<Reservation> = { status };
     if (billAmount !== undefined) {
       updates.billAmount = billAmount;
     }
-    
+
     updateReservationOptimistically(selectedReservation.id, updates);
 
+    // INSTANT FEEDBACK: Show success immediately  
     toast({
       title: "Reservation Updated",
       description: `Reservation status successfully set to ${status}.`,
     });
 
-    setBillAmountDialogOpen(false);
-    setCurrentBillAmount('');
-
     try {
-      const payload: any = { status: status };
+      // IMPROVED PAYLOAD: Send exactly what backend expects
+      const payload: any = { status };
+      
+      // Only add billAmount for completed status
       if (status === 'completed' && billAmount !== undefined) {
         payload.billAmount = billAmount;
       }
 
-      console.log('Sending status update:', payload);
+      console.log('Sending status update payload:', payload);
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
         method: 'PUT',
@@ -294,100 +306,38 @@ export default function Reservations(): JSX.Element {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+        const errorData = await response.json().catch(() => ({ 
+          message: `HTTP error! status: ${response.status}` 
+        }));
+        
+        console.error('API Error Response:', errorData);
         throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
       }
 
+      const responseData = await response.json();
+      console.log('API Success Response:', responseData);
+
+      // SUCCESS: API call succeeded
+      
     } catch (err: unknown) {
+      // REVERT OPTIMISTIC UPDATE
       const revertUpdates: Partial<Reservation> = {
-        status: selectedReservation.status
+        status: originalStatus,
+        billAmount: originalBillAmount
       };
-      if (billAmount !== undefined) {
-        revertUpdates.billAmount = selectedReservation.billAmount;
-      }
       
       updateReservationOptimistically(selectedReservation.id, revertUpdates);
 
       const error = err as Error;
-      console.error("Failed to update reservation:", error);
+      console.error("API call failed:", error);
+      
       toast({
-        title: "Update Failed",
+        title: "Update Failed", 
         description: error.message || "An unexpected error occurred.",
         variant: "destructive",
       });
     }
   }, [selectedReservation, toast, updateReservationOptimistically]);
-
-  // Function to fetch all tables for dropdown population
-  const fetchTables = useCallback(async (): Promise<void> => {
-    setIsTablesLoading(true);
-    setTablesError(null);
-    try {
-      // Use current date as default for fetching all tables
-      const currentDate = format(new Date(), 'yyyy-MM-dd');
-      
-      // Call the API with date parameter (required) but no time (returns all tables)
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/tables?date=${currentDate}`
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Handle both response formats from your API
-      if (data.availableTables) {
-        // When date/time provided, API returns {availableTables: [...]}
-        setTables(Array.isArray(data.availableTables) ? data.availableTables : []);
-      } else if (Array.isArray(data)) {
-        // When only date provided, API returns array directly
-        setTables(data);
-      } else {
-        console.warn('Unexpected API response format:', data);
-        setTables([]);
-      }
-    } catch (error) {
-      console.error('Error fetching tables:', error);
-      setTablesError('Failed to load tables. Please try again later.');
-      setTables([]);
-    } finally {
-      setIsTablesLoading(false);
-    }
-  }, []);
-
-  // Function to fetch available tables for specific date/time
-  const fetchAvailableTables = useCallback(async (date: Date, time: string): Promise<Table[]> => {
-    try {
-      const dateStr = format(date, 'yyyy-MM-dd');
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/tables?date=${dateStr}&time=${time}&duration=90`
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      return data.availableTables || [];
-    } catch (error) {
-      console.error('Error fetching available tables:', error);
-      return [];
-    }
-  }, []);
-
-  // Error handler for table operations
-  const handleTableError = useCallback((error: unknown, operation: string) => {
-    const message = error instanceof Error ? error.message : 'An unexpected error occurred';
-    console.error(`Table ${operation} error:`, error);
-    
-    toast({
-      title: `Table ${operation} Failed`,
-      description: message,
-      variant: "destructive"
-    });
-  }, [toast]);
 
   // Fetch reservations and tables when component mounts
   useEffect(() => {
@@ -485,26 +435,38 @@ export default function Reservations(): JSX.Element {
   }, [dateFilter, dateRange, statusFilter, reservations, today]);
 
   const handleBillConfirm = useCallback((): void => {
-    const billAmount = currentBillAmount.trim() ? Number(currentBillAmount) : 0;
-    if (currentBillAmount.trim() && isNaN(billAmount)) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid bill amount.",
-        variant: "destructive"
-      });
-      return;
-    }
-    if (currentReservationForBill) {
-      performUpdateReservationStatus('completed', billAmount);
-    } else {
+    if (!currentReservationForBill) {
       toast({
         title: "Error",
         description: "No reservation selected for billing.",
         variant: "destructive"
       });
+      return;
     }
+
+    // FIXED: Better validation - allow empty amount (defaults to 0)
+    const billAmount = currentBillAmount.trim() ? Number(currentBillAmount) : 0;
+    
+    if (currentBillAmount.trim() && isNaN(billAmount)) {
+      toast({
+        title: "Invalid amount", 
+        description: "Please enter a valid bill amount.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // CALL with the currentReservationForBill (not selectedReservation)
+    if (currentReservationForBill) {
+      // Update selectedReservation to match currentReservationForBill before API call
+      setSelectedReservation(currentReservationForBill);
+      performUpdateReservationStatus('completed', billAmount);
+    }
+    
     setBillAmountDialogOpen(false);
-  }, [currentBillAmount, toast, performUpdateReservationStatus, currentReservationForBill]);
+    setCurrentBillAmount('');
+    setCurrentReservationForBill(null);
+  }, [currentBillAmount, currentReservationForBill, toast, performUpdateReservationStatus]);
 
   const handleExport = useCallback((): void => {
     const headers = ['ID', 'Guest', 'Date', 'Time', 'Party Size', 'Table', 'Status', 'Bill Amount'];
@@ -540,10 +502,289 @@ export default function Reservations(): JSX.Element {
     setIsExportDialogOpen(false);
   }, [filteredReservations, toast]);
 
-  // Defensive UI before any logic or hooks
-  if (isLoading) {
-    return <div>Loading reservations...</div>;
+  const handleStatusChange = (status: 'confirmed' | 'pending' | 'cancelled' | 'completed'): void => {
+    if (!selectedReservation) return;
+    
+    if (status === 'completed') {
+      // FIXED: Set reservation and amount before calling API
+      setCurrentReservationForBill(selectedReservation);
+      setCurrentBillAmount(selectedReservation.billAmount?.toString() || '');
+      setBillAmountDialogOpen(true);
+      return;
+    }
+    
+    performUpdateReservationStatus(status);
+  };
+
+  const selectedTable = tables.find(t => t.number.toString() === newReservation.tableId);
+
+  const handleAddReservation = async (): Promise<void> => {
+    if (!import.meta.env.VITE_RESTAURANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "Restaurant ID is not configured. Please contact support.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newReservation.guestName || !newReservation.guestPhone) {
+      toast({
+        title: "Guest Required",
+        description: "Please search and select a guest first.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.date) {
+      toast({
+        title: "Date Required", 
+        description: "Please select a date for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.time) {
+      toast({
+        title: "Time Required",
+        description: "Please select a time for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.partySize || newReservation.partySize < 1) {
+      toast({
+        title: "Party Size Required",
+        description: "Please enter a valid party size.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!newReservation.tableId) {
+      toast({
+        title: "Table Required",
+        description: "Please select a table for the reservation.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (selectedTable && newReservation.partySize > selectedTable.capacity) {
+      toast({
+        title: "Party Size Exceeds Table Capacity",
+        description: `Selected table only seats ${selectedTable.capacity}. Reduce party size or pick a larger table.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const tempReservation: Reservation = {
+      id: `temp-${Date.now()}`,
+      guestName: newReservation.guestName,
+      guestEmail: newReservation.guestEmail,
+      guestInitials: getInitials(newReservation.guestName),
+      date: newReservation.date,
+      time: newReservation.time,
+      end_time: newReservation.end_time,
+      partySize: newReservation.partySize,
+      tableId: newReservation.tableId,
+      status: 'pending',
+      specialRequests: newReservation.specialRequests,
+      billAmount: 0
+    };
+
+    setReservations(prev => [tempReservation, ...prev]);
+    setFilteredReservations(prev => [tempReservation, ...prev]);
+
+    setIsAddReservationOpen(false);
+    setNewReservation({
+      guestName: '',
+      guestEmail: '',
+      guestPhone: '',
+      date: new Date(),
+      time: '19:00',
+      end_time: null,
+      partySize: 2,
+      tableId: '',
+      specialRequests: ''
+    });
+    setGuestSearchTerm('');
+    setGuestSearchResults([]);
+
+    toast({
+      title: "Reservation Created",
+      description: `Reservation for ${tempReservation.guestName} has been created successfully.`,
+      variant: "default"
+    });
+
+    try {
+      const payload = {
+        guestName: newReservation.guestName,
+        guestEmail: newReservation.guestEmail,
+        guestPhone: newReservation.guestPhone,
+        date: format(newReservation.date, 'yyyy-MM-dd'),
+        time: newReservation.time,
+        partySize: Number(newReservation.partySize),
+        tableId: newReservation.tableId,
+        special_requests: newReservation.specialRequests || undefined,
+      };
+
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.error || responseData.message || 'Failed to create reservation');
+      }
+
+      const realReservation: Reservation = {
+        id: responseData.id,
+        guestName: responseData.guestName,
+        guestEmail: responseData.guestEmail || '',
+        guestInitials: getInitials(responseData.guestName),
+        date: new Date(responseData.date),
+        time: responseData.time,
+        end_time: responseData.endTime ? new Date(responseData.endTime) : null,
+        partySize: responseData.partySize,
+        tableId: responseData.tableNumber || responseData.tableId,
+        status: responseData.status,
+        specialRequests: responseData.specialRequests || '',
+        billAmount: responseData.billAmount || 0
+      };
+
+      setReservations(prev => prev.map(r => r.id === tempReservation.id ? realReservation : r));
+      setFilteredReservations(prev => prev.map(r => r.id === tempReservation.id ? realReservation : r));
+
+    } catch (error) {
+      setReservations(prev => prev.filter(r => r.id !== tempReservation.id));
+      setFilteredReservations(prev => prev.filter(r => r.id !== tempReservation.id));
+      
+      console.error('Error creating reservation:', error);
+      toast({
+        title: "Error Creating Reservation",
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleEditReservation = async (): Promise<void> => {
+    if (!selectedReservation) return;
+
+    if (!import.meta.env.VITE_RESTAURANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "Restaurant ID is not configured. Please contact support.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    updateReservationOptimistically(selectedReservation.id, selectedReservation);
+
+    setIsEditReservationOpen(false);
+
+    toast({
+      title: "Reservation Updated Successfully",
+      description: `Reservation has been updated.`
+    });
+
+    const payload = {
+      guestName: selectedReservation.guestName,
+      guestEmail: selectedReservation.guestEmail || '',
+      date: format(selectedReservation.date, 'yyyy-MM-dd'),
+      time: selectedReservation.time,
+      partySize: selectedReservation.partySize,
+      tableNumber: selectedReservation.tableId,
+      special_requests: selectedReservation.specialRequests || '',
+      status: selectedReservation.status || 'pending'
+    };
+
+    console.log('Sending update reservation payload:', payload);
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.error || responseData.details || responseData.message || 'An unknown error occurred.');
+      }
+
+    } catch (error: unknown) {
+      console.error('Network or unexpected error updating reservation:', error);
+      let errorMessage = 'A network error occurred. Please try again.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      toast({
+        title: "Update Failed",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    }
+  };
+
+  // FIXED: Added 'seated' status badge handling
+  const getStatusBadgeClass = (status: string): string => {
+    switch (status) {
+      case 'confirmed':
+        return 'bg-blue-100 text-blue-800';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'seated':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getDateFilterLabel = (): React.ReactNode => {
+    switch (dateFilter) {
+      case 'today':
+        return 'Today';
+      case 'week':
+        return 'This Week';
+      case 'month':
+        return 'This Month';
+      case 'custom':
+        if (dateRange.from) {
+          return dateRange.to
+            ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d')}`
+            : format(dateRange.from, 'PPP');
+        }
+        return 'Select dates';
+      default:
+        return 'Date Filter';
+    }
+  };
+
+  if (isLoading && reservations.length === 0) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-pulse mb-2">Loading reservations...</div>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
   }
+
+  // Defensive UI before any logic or hooks
   if (error) {
     return <div>Failed to Load Reservations: {error}</div>;
   }
@@ -566,8 +807,9 @@ export default function Reservations(): JSX.Element {
     if (!selectedReservation) return;
     
     if (status === 'completed') {
+      // FIXED: Set reservation and amount before calling API
       setCurrentReservationForBill(selectedReservation);
-      setCurrentBillAmount(selectedReservation.billAmount?.toString() || ''); 
+      setCurrentBillAmount(selectedReservation.billAmount?.toString() || '');
       setBillAmountDialogOpen(true);
       return;
     }
