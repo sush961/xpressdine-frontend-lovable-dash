@@ -111,6 +111,7 @@ export default function Reservations(): JSX.Element {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const reservationIdFromQuery = queryParams.get('id');
+  const { handleLinkTables } = useTableManager();
   const { toast } = useToast();
 
   // Date and filter states
@@ -181,6 +182,10 @@ export default function Reservations(): JSX.Element {
     tableId: '',
     specialRequests: ''
   });
+  
+  // Table linking state
+  const [linkTables, setLinkTables] = useState(false);
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
 
   // Fetch reservations from the API
   const fetchReservations = useCallback(async (): Promise<void> => {
@@ -676,6 +681,8 @@ export default function Reservations(): JSX.Element {
       tableId: '',
       specialRequests: ''
     });
+    setLinkTables(false);
+    setSelectedTableIds([]);
     setGuestSearchTerm('');
     setGuestSearchResults([]);
 
@@ -709,6 +716,34 @@ export default function Reservations(): JSX.Element {
         throw new Error(responseData.error || responseData.message || 'Failed to create reservation');
       }
 
+      // Auto-link tables if linking was enabled
+      if (linkTables && selectedTableIds.length > 1) {
+        // Create linking notes
+        const tableNames = selectedTableIds.map(id => {
+          const table = tables.find(t => t.id === id);
+          return `Table ${table?.number}`;
+        }).join(', ');
+        
+        // Update reservation notes with linking info
+        const updatedNotes = `${newReservation.specialRequests || ''}\nLinked Tables: ${tableNames}`.trim();
+        
+        // Update the reservation with linked tables info
+        await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${responseData.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ special_requests: updatedNotes })
+        });
+        
+        // Auto-link tables in table view (uses existing frontend logic)
+        handleLinkTables(selectedTableIds);
+        
+        toast({
+          title: "Tables Linked",
+          description: `Successfully linked ${selectedTableIds.length} tables for this reservation`,
+          variant: "default"
+        });
+      }
+
       const realReservation: Reservation = {
         id: responseData.id,
         guestName: responseData.guestName,
@@ -720,7 +755,12 @@ export default function Reservations(): JSX.Element {
         partySize: responseData.partySize,
         tableId: responseData.tableNumber || responseData.tableId,
         status: responseData.status,
-        specialRequests: responseData.specialRequests || '',
+        specialRequests: linkTables && selectedTableIds.length > 1 
+          ? `${responseData.specialRequests || ''}\nLinked Tables: ${selectedTableIds.map(id => {
+              const t = tables.find(t => t.id === id);
+              return `Table ${t?.number}`;
+            }).join(', ')}`.trim() 
+          : responseData.specialRequests || '',
         billAmount: responseData.billAmount || 0
       };
 
@@ -738,7 +778,7 @@ export default function Reservations(): JSX.Element {
         variant: "destructive"
       });
     }
-  }, [toast, newReservation, selectedTable]);
+  }, [toast, newReservation, selectedTable, linkTables, selectedTableIds, tables, handleLinkTables]);
 
   const handleEditReservation = useCallback(async (): Promise<void> => {
     if (!selectedReservation) return;
@@ -1022,6 +1062,28 @@ export default function Reservations(): JSX.Element {
                     
                     <div className="space-y-2">
                       <Label htmlFor="reservation-table">Table</Label>
+                      
+                      {/* Link Tables Checkbox */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="checkbox"
+                          id="link-tables"
+                          checked={linkTables}
+                          onChange={e => {
+                            setLinkTables(e.target.checked);
+                            if (!e.target.checked) {
+                              // Reset to single table
+                              setSelectedTableIds(selectedTableIds.slice(0, 1));
+                              setNewReservation(prev => ({
+                                ...prev,
+                                tableId: selectedTableIds[0] || ''
+                              }));
+                            }
+                          }}
+                        />
+                        <Label htmlFor="link-tables" className="text-sm">Link Tables</Label>
+                      </div>
+
                       {isTablesLoading ? (
                         <div className="flex h-10 items-center text-sm text-muted-foreground">
                           <div className="animate-pulse">Loading available tables...</div>
@@ -1029,45 +1091,100 @@ export default function Reservations(): JSX.Element {
                       ) : tablesError ? (
                         <div className="space-y-2">
                           <div className="text-sm text-destructive">{tablesError}</div>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={fetchTables}
-                            className="mt-1"
-                          >
+                          <Button variant="outline" size="sm" onClick={fetchTables}>
                             Retry
                           </Button>
                         </div>
                       ) : (
                         <>
-                          <select
-                            id="reservation-table"
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            value={newReservation.tableId || ''}
-                            onChange={(e) => setNewReservation({...newReservation, tableId: e.target.value})}
-                            required
-                            disabled={tables.length === 0}
-                          >
-                            <option value="">Select a table</option>
-                            {tables
-                              .filter(table => table.capacity >= newReservation.partySize) // Filter by capacity
-                              .map((table) => (
-                                <option 
-                                  key={table.id} 
-                                  value={table.id}
-                                  disabled={table.status === 'occupied'}
-                                  className={table.status === 'occupied' ? 'text-muted-foreground' : ''}
-                                >
-                                  T{table.number} (Seats: {table.capacity}) {table.status === 'occupied' ? '- Occupied' : ''}
-                                </option>
-                              ))}
-                          </select>
-                          {tables.length === 0 && (
+                          {/* Table Selection - Changes based on linkTables */}
+                          {!linkTables ? (
+                            // SINGLE TABLE SELECTION (Dropdown)
+                            <select
+                              id="reservation-table"
+                              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                              value={newReservation.tableId || ''}
+                              onChange={(e) => {
+                                setNewReservation({...newReservation, tableId: e.target.value});
+                                setSelectedTableIds([e.target.value]);
+                              }}
+                              required
+                              disabled={tables.length === 0}
+                            >
+                              <option value="">Select a table</option>
+                              {tables
+                                .filter(table => table.capacity >= newReservation.partySize)
+                                .map((table) => (
+                                  <option 
+                                    key={table.id} 
+                                    value={table.id}
+                                    disabled={table.status === 'occupied'}
+                                    className={table.status === 'occupied' ? 'text-muted-foreground' : ''}
+                                  >
+                                    T{table.number} (Seats: {table.capacity}) - {table.status}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            // MULTIPLE TABLE SELECTION (Checkboxes)
+                            <div className="space-y-2 max-h-32 overflow-y-auto border rounded-md p-2">
+                              {tables
+                                .filter(table => table.capacity >= 1) // Allow all tables for linking
+                                .map((table) => (
+                                  <label key={table.id} className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedTableIds.includes(table.id)}
+                                      onChange={e => {
+                                        if (e.target.checked) {
+                                          const newSelected = [...selectedTableIds, table.id];
+                                          setSelectedTableIds(newSelected);
+                                          setNewReservation(prev => ({
+                                            ...prev,
+                                            tableId: newSelected[0] // Primary table
+                                          }));
+                                        } else {
+                                          const newSelected = selectedTableIds.filter(id => id !== table.id);
+                                          setSelectedTableIds(newSelected);
+                                          setNewReservation(prev => ({
+                                            ...prev,
+                                            tableId: newSelected[0] || ''
+                                          }));
+                                        }
+                                      }}
+                                      disabled={table.status === 'occupied' && !selectedTableIds.includes(table.id)}
+                                    />
+                                    <span className={`text-sm ${table.status === 'occupied' && !selectedTableIds.includes(table.id) ? 'text-muted-foreground' : ''}`}>
+                                      T{table.number} (Seats: {table.capacity}) - {table.status}
+                                    </span>
+                                  </label>
+                                ))}
+                            </div>
+                          )}
+                          
+                          {/* Validation Messages */}
+                          {linkTables && selectedTableIds.length < 2 && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              Please select at least 2 tables to link
+                            </p>
+                          )}
+                          
+                          {linkTables && selectedTableIds.length > 1 && (
+                            <p className="text-xs text-green-600 mt-1">
+                              Combined capacity: {selectedTableIds.reduce((total, id) => {
+                                const table = tables.find(t => t.id === id);
+                                return total + (table?.capacity || 0);
+                              }, 0)} seats
+                            </p>
+                          )}
+                          
+                          {!linkTables && tables.length === 0 && (
                             <p className="text-xs text-muted-foreground mt-1">
                               No tables available. Please check your configuration.
                             </p>
                           )}
-                          {tables.length > 0 && tables.every(t => t.capacity < newReservation.partySize) && (
+                          
+                          {!linkTables && tables.length > 0 && tables.every(t => t.capacity < newReservation.partySize) && (
                             <p className="text-xs text-amber-600 mt-1">
                               No tables available for {newReservation.partySize} guests. Please reduce party size or add larger tables.
                             </p>
@@ -1101,7 +1218,8 @@ export default function Reservations(): JSX.Element {
                       isSubmitting ||
                       (selectedTable && newReservation.partySize > selectedTable.capacity) ||
                       (newReservation.guestEmail && !/^\S+@\S+\.\S+$/.test(newReservation.guestEmail)) ||
-                      (newReservation.specialRequests && newReservation.specialRequests.length > 250)
+                      (newReservation.specialRequests && newReservation.specialRequests.length > 250) ||
+                      (linkTables && selectedTableIds.length < 2)  // Require at least 2 tables when linking
                     }
                   >
                     {isSubmitting ? 'Creating...' : 'Create Reservation'}

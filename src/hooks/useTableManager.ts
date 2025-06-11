@@ -1,28 +1,61 @@
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TableData, TableFormValues } from '@/components/tables/types';
 import { useToast } from '@/components/ui/use-toast';
 
-// Initial mock data - would be fetched from API in real implementation
-const initialTablesData: TableData[] = [
-  { id: 'T01', name: 'Table 1', capacity: 4, status: 'empty', location: 'Window', isLinked: false },
-  { id: 'T02', name: 'Table 2', capacity: 2, status: 'occupied', location: 'Window', isLinked: false },
-  { id: 'T03', name: 'Table 3', capacity: 2, status: 'empty', location: 'Bar', isLinked: false },
-  { id: 'T04', name: 'Table 4', capacity: 6, status: 'booked', location: 'Center', isLinked: false },
-  { id: 'T05', name: 'Table 5', capacity: 4, status: 'empty', location: 'Patio', isLinked: false },
-  { id: 'T06', name: 'Table 6', capacity: 8, status: 'booked', location: 'Private Room', isLinked: true, linkedWith: ['T07'] },
-  { id: 'T07', name: 'Table 7', capacity: 4, status: 'booked', location: 'Private Room', isLinked: true, linkedWith: ['T06'] },
-  { id: 'T08', name: 'Table 8', capacity: 2, status: 'occupied', location: 'Patio', isLinked: false },
-];
-
 export function useTableManager() {
   const { toast } = useToast();
-  const [tablesData, setTablesData] = useState<TableData[]>(initialTablesData);
+  const [tablesData, setTablesData] = useState<TableData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [linkMode, setLinkMode] = useState(false);
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [isEditTableOpen, setIsEditTableOpen] = useState(false);
   const [currentEditTable, setCurrentEditTable] = useState<TableData | null>(null);
+  
+  // Fetch tables from API
+  const fetchTablesFromAPI = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tables');
+      if (!response.ok) {
+        throw new Error('Failed to fetch tables');
+      }
+      const backendTables = await response.json();
+      
+      // Convert to frontend format
+      const frontendTables = backendTables.map((table: any) => ({
+        id: table.id,
+        name: `Table ${table.number}`,
+        capacity: table.capacity,
+        status: table.currentStatus || 'empty',
+        location: 'Window', // Keep as display-only for now
+        isLinked: false, // Keep linking as frontend-only
+        // Preserve any existing table data if it exists
+        ...tablesData.find(t => t.id === table.id)
+      }));
+      
+      setTablesData(frontendTables);
+    } catch (error) {
+      console.error('Failed to fetch tables:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load tables. Please try again later.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast, tablesData]);
+  
+  // Fetch tables on mount
+  useEffect(() => {
+    fetchTablesFromAPI();
+    
+    // Set up polling every 30 seconds to refresh table status
+    const intervalId = setInterval(fetchTablesFromAPI, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, [fetchTablesFromAPI]);
 
   const handleTableSelect = (tableId: string) => {
     if (!linkMode) return;
