@@ -91,15 +91,15 @@ export function Sidebar({ className }: SidebarProps) {
         {!collapsed ? (
           <div className="flex items-center">
             <img 
-              src="/xpressdine-logo.png"
+              src="/xpressdine-logo.svg"
               alt="XpressDine Logo" 
-              className="h-8 mr-2" 
+              className="h-8 mr-2 w-auto" 
             />
           </div>
         ) : (
           <div className="flex justify-center w-full">
             <img 
-              src="/xpressdine-logo.png"
+              src="/xpressdine-logo.svg"
               alt="XpressDine Logo" 
               className="h-8 w-auto" 
             />
