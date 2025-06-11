@@ -27,23 +27,30 @@ export function useTableManager() {
   // Fetch tables from API
   const fetchTablesFromAPI = useCallback(async () => {
     try {
-      const response = await fetch('/api/tables');
+      // Use the environment variable for API base URL
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/tables`);
       if (!response.ok) {
         throw new Error('Failed to fetch tables');
       }
       const backendTables: BackendTable[] = await response.json();
       
-      // Convert to frontend format
-      const frontendTables = backendTables.map((table: BackendTable) => ({
-        id: table.id,
-        name: `Table ${table.number}`,
-        capacity: table.capacity,
-        status: table.currentStatus || 'empty',
-        location: 'Window', // Keep as display-only for now
-        isLinked: false, // Keep linking as frontend-only
-        // Preserve any existing table data if it exists
-        ...tablesData.find(t => t.id === table.id)
-      }));
+      // Convert to frontend format without creating circular dependency
+      const frontendTables = backendTables.map((table: BackendTable) => {
+        // Ensure status is one of the allowed values
+        let status: 'empty' | 'occupied' | 'booked' = 'empty';
+        if (table.currentStatus === 'occupied' || table.currentStatus === 'booked') {
+          status = table.currentStatus;
+        }
+        
+        return {
+          id: table.id,
+          name: `Table ${table.number}`,
+          capacity: table.capacity,
+          status,
+          location: 'Window', // Keep as display-only for now
+          isLinked: false, // Keep linking as frontend-only
+        } as TableData; // Explicitly type the object as TableData
+      });
       
       setTablesData(frontendTables);
     } catch (error) {
@@ -56,17 +63,16 @@ export function useTableManager() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast, tablesData]);
+  }, [toast]); // Removed tablesData from dependencies
   
   // Fetch tables on mount
   useEffect(() => {
     fetchTablesFromAPI();
     
-    // Set up polling every 30 seconds to refresh table status
-    const intervalId = setInterval(fetchTablesFromAPI, 30000);
-    
-    return () => clearInterval(intervalId);
-  }, [fetchTablesFromAPI]);
+    // Temporarily disabled polling to prevent issues
+    // const intervalId = setInterval(fetchTablesFromAPI, 30000);
+    // return () => clearInterval(intervalId);
+  }, []); // Removed fetchTablesFromAPI from dependencies
 
   const handleTableSelect = (tableId: string) => {
     if (!linkMode) return;
