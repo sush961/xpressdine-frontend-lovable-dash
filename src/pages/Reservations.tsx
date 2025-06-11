@@ -370,6 +370,13 @@ export default function Reservations(): JSX.Element {
     }
   }, [selectedReservation, toast, updateReservationOptimistically]);
 
+  // Fetch reservations and tables when component mounts
+  useEffect(() => {
+    console.log('[Reservations.tsx] Component mounted, fetching reservations and tables...');
+    fetchReservations();
+    fetchTables();
+  }, [fetchReservations, fetchTables]);
+
   const rawFetchGuestSuggestions = useCallback(async (searchTerm: string): Promise<void> => {
     if (searchTerm.length < 2) {
       setGuestSearchResults([]);
@@ -542,7 +549,7 @@ export default function Reservations(): JSX.Element {
 
   const selectedTable = tables.find(t => t.number.toString() === newReservation.tableId);
 
-  const handleAddReservation = async (): Promise<void> => {
+  const handleAddReservation = useCallback(async (): Promise<void> => {
     if (!import.meta.env.VITE_RESTAURANT_ID) {
       toast({
         title: "Configuration Error",
@@ -693,9 +700,9 @@ export default function Reservations(): JSX.Element {
         variant: "destructive"
       });
     }
-  }, []);
+  }, [toast, newReservation, selectedTable]);
 
-  const handleEditReservation = async (): Promise<void> => {
+  const handleEditReservation = useCallback(async (): Promise<void> => {
     if (!selectedReservation) return;
 
     if (!import.meta.env.VITE_RESTAURANT_ID) {
@@ -756,7 +763,7 @@ export default function Reservations(): JSX.Element {
         variant: "destructive"
       });
     }
-  };
+  }, [selectedReservation, toast, updateReservationOptimistically]);
 
   // FIXED: Added 'seated' status badge handling
   const getStatusBadgeClass = (status: string): string => {
@@ -1314,7 +1321,7 @@ export default function Reservations(): JSX.Element {
                     <h3 className="text-sm font-medium text-muted-foreground">Bill Amount</h3>
                     <p className="flex items-center">
                       <DollarSign className="h-4 w-4 mr-1 text-green-600" />
-                      {selectedReservation.billAmount.toFixed(2)}
+                      IDR {selectedReservation.billAmount.toLocaleString()}
                     </p>
                   </div>
                 )}
