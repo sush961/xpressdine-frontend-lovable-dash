@@ -257,7 +257,38 @@ export default function Reservations(): JSX.Element {
     }
   }, [toast, reservations.length]);
 
-  // Update reservation status - Simplified to only send status and bill amount
+  const fetchTables = useCallback(async (): Promise<void> => {
+    setIsTablesLoading(true);
+    setTablesError(null);
+    try {
+      const currentDate = format(new Date(), 'yyyy-MM-dd');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/tables?date=${currentDate}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.availableTables) {
+        setTables(Array.isArray(data.availableTables) ? data.availableTables : []);
+      } else if (Array.isArray(data)) {
+        setTables(data);
+      } else {
+        console.warn('Unexpected API response format:', data);
+        setTables([]);
+      }
+    } catch (error) {
+      console.error('Error fetching tables:', error);
+      setTablesError('Failed to load tables. Please try again later.');
+      setTables([]);
+    } finally {
+      setIsTablesLoading(false);
+    }
+  }, []);
+
   const performUpdateReservationStatus = useCallback(async (
     status: 'confirmed' | 'pending' | 'cancelled' | 'completed', 
     billAmount?: number
@@ -338,13 +369,6 @@ export default function Reservations(): JSX.Element {
       });
     }
   }, [selectedReservation, toast, updateReservationOptimistically]);
-
-  // Fetch reservations and tables when component mounts
-  useEffect(() => {
-    console.log('[Reservations.tsx] Component mounted, fetching reservations and tables...');
-    fetchReservations();
-    fetchTables();
-  }, [fetchReservations, fetchTables]);
 
   const rawFetchGuestSuggestions = useCallback(async (searchTerm: string): Promise<void> => {
     if (searchTerm.length < 2) {
@@ -669,7 +693,7 @@ export default function Reservations(): JSX.Element {
         variant: "destructive"
       });
     }
-  };
+  }, []);
 
   const handleEditReservation = async (): Promise<void> => {
     if (!selectedReservation) return;
