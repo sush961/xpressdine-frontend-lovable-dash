@@ -12,7 +12,7 @@ import { Plus, Trash2 } from 'lucide-react';
 // Mock organization data
 const organizationData = {
   name: 'XpressDine Restaurant',
-  logo: '/xpressdine-logo.svg',
+  logo: '/xpressdine-logo.png',
   address: '123 Main Street, New York, NY 10001',
   phone: '(555) 987-6543',
   email: 'contact@xpressdinerestaurant.com',
