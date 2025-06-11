@@ -32,8 +32,7 @@ import {
   DialogDescription
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { useOptimizedReservations } from '@/hooks/useOptimizedReservations';
-import { useOptimizedTables } from '@/hooks/useOptimizedTables';
+
 
 type DateFilterType = 'today' | 'tomorrow' | 'this-week' | 'next-week' | 'this-month' | 'custom' | 'week' | 'month';
 
@@ -126,12 +125,9 @@ export default function Reservations(): JSX.Element {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   
   // Reservation data states
-  const { 
-    reservations, 
-    isLoading, 
-    error, 
-    fetchReservations 
-  } = useOptimizedReservations();
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
   
   // Dialog and modal states
@@ -152,12 +148,9 @@ export default function Reservations(): JSX.Element {
   const [guestSearchError, setGuestSearchError] = useState<string | null>(null);
   
   // Table states
-  const { 
-    tables, 
-    isTablesLoading, 
-    tablesError, 
-    fetchTables 
-  } = useOptimizedTables();
+  const [tables, setTables] = useState<Table[]>([]);
+  const [isTablesLoading, setIsTablesLoading] = useState(true);
+  const [tablesError, setTablesError] = useState<string | null>(null);
   
   // Submission states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -188,6 +181,99 @@ export default function Reservations(): JSX.Element {
     tableId: '',
     specialRequests: ''
   });
+
+  // Fetch reservations from the API
+  const fetchReservations = useCallback(async (): Promise<void> => {
+    if (reservations.length === 0) {
+      setIsLoading(true);
+    }
+    
+    setError(null);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      
+      const transformedData: Reservation[] = data.map((item: any) => ({
+        id: item.id,
+        guestName: item.guestName || item.name || item.customer_name || '',
+        guestEmail: item.guestEmail || item.email || item.customer_email || '',
+        guestInitials: getInitials(item.guestName || item.name || item.customer_name || ''),
+        date: (() => {
+          const dateStr = item.date || item.reservation_time || item.date_time;
+          if (dateStr && typeof dateStr === 'string' && dateStr.trim() !== '') {
+            try {
+              return new Date(dateStr);
+            } catch (e) {
+              console.error('Invalid date format from API:', dateStr, e);
+              return new Date();
+            }
+          }
+          return new Date();
+        })(),
+        time: item.time || (item.reservation_time ? format(new Date(item.reservation_time), 'HH:mm') : ''),
+        end_time: item.endTime || item.end_time ? new Date(item.endTime || item.end_time) : null,
+        partySize: item.partySize || item.party_size || item.guests || 0,
+        tableId: item.tableNumber || item.tableId || item.table_id || '',
+        status: (item.status as Reservation['status']) || 'pending',
+        specialRequests: item.specialRequests || item.notes || '',
+        billAmount: item.billAmount || item.bill_amount
+      }));
+
+      setReservations(transformedData);
+      setFilteredReservations(transformedData);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error("Failed to fetch reservations:", error);
+      setError(`Failed to fetch reservations: ${error.message}`);
+      
+      if (reservations.length === 0) {
+        toast({
+          title: "Error Fetching Reservations",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
+      setReservations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast, reservations.length]);
+
+  // Fetch tables from the API
+  const fetchTables = useCallback(async (): Promise<void> => {
+    setIsTablesLoading(true);
+    setTablesError(null);
+    try {
+      const currentDate = format(new Date(), 'yyyy-MM-dd');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/tables?date=${currentDate}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.availableTables) {
+        setTables(Array.isArray(data.availableTables) ? data.availableTables : []);
+      } else if (Array.isArray(data)) {
+        setTables(data);
+      } else {
+        console.warn('Unexpected API response format:', data);
+        setTables([]);
+      }
+    } catch (error) {
+      console.error('Error fetching tables:', error);
+      setTablesError('Failed to load tables. Please try again later.');
+      setTables([]);
+    } finally {
+      setIsTablesLoading(false);
+    }
+  }, []);
 
   // Optimistic update helper
   const updateReservationOptimistically = useCallback((
