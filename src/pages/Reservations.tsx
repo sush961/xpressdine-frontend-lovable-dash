@@ -1,5 +1,27 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+
+// Add interface for API response
+interface ApiReservation {
+  id: string;
+  guestName?: string;
+  name?: string;
+  customer_name?: string;
+  guestEmail?: string;
+  email?: string;
+  customer_email?: string;
+  date?: string;
+  reservation_time?: string;
+  date_time?: string;
+  time?: string;
+  end_time?: string | null;
+  party_size?: number;
+  tableId?: string;
+  tableNumber?: string;
+  status?: string;
+  specialRequests?: string;
+  billAmount?: number;
+}
 import { useToast } from '@/components/ui/use-toast';
 import { Link, useLocation } from 'react-router-dom';
 import { 
@@ -199,9 +221,9 @@ export default function Reservations(): JSX.Element {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const data = await response.json();
+      const data: ApiReservation[] = await response.json();
       
-      const transformedData: Reservation[] = data.map((item: any) => ({
+      const transformedData: Reservation[] = data.map((item) => ({
         id: item.id,
         guestName: item.guestName || item.name || item.customer_name || '',
         guestEmail: item.guestEmail || item.email || item.customer_email || '',
@@ -328,8 +350,14 @@ export default function Reservations(): JSX.Element {
     });
 
     try {
+      // Define payload interface
+      interface UpdatePayload {
+        status: string;
+        total_amount?: number;
+      }
+      
       // IMPROVED PAYLOAD: Send exactly what backend expects
-      const payload: any = { status };
+      const payload: UpdatePayload = { status };
       
       // Only add total_amount for completed status (backend expects total_amount instead of billAmount)
       if (status === 'completed' && billAmount !== undefined) {

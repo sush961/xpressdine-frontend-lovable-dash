@@ -3,6 +3,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { TableData, TableFormValues } from '@/components/tables/types';
 import { useToast } from '@/components/ui/use-toast';
 
+// Add interface for backend table response
+interface BackendTable {
+  id: string;
+  number: number;
+  capacity: number;
+  currentStatus?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export function useTableManager() {
   const { toast } = useToast();
   const [tablesData, setTablesData] = useState<TableData[]>([]);
@@ -20,10 +31,10 @@ export function useTableManager() {
       if (!response.ok) {
         throw new Error('Failed to fetch tables');
       }
-      const backendTables = await response.json();
+      const backendTables: BackendTable[] = await response.json();
       
       // Convert to frontend format
-      const frontendTables = backendTables.map((table: any) => ({
+      const frontendTables = backendTables.map((table: BackendTable) => ({
         id: table.id,
         name: `Table ${table.number}`,
         capacity: table.capacity,
