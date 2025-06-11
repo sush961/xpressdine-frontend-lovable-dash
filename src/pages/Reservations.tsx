@@ -289,6 +289,7 @@ export default function Reservations(): JSX.Element {
     }
   }, []);
 
+  // REPLACE performUpdateReservationStatus function with enhanced debug version
   const performUpdateReservationStatus = useCallback(async (
     status: 'confirmed' | 'pending' | 'cancelled' | 'completed', 
     billAmount?: number
@@ -323,12 +324,15 @@ export default function Reservations(): JSX.Element {
       // IMPROVED PAYLOAD: Send exactly what backend expects
       const payload: any = { status };
       
-      // Only add billAmount for completed status
+      // Only add total_amount for completed status (backend expects total_amount instead of billAmount)
       if (status === 'completed' && billAmount !== undefined) {
-        payload.billAmount = billAmount;
+        payload.total_amount = billAmount;  // Use backend field name
       }
 
-      console.log('Sending status update payload:', payload);
+      console.log('=== DEBUG INFO ===');
+      console.log('Reservation ID:', selectedReservation.id);
+      console.log('Sending status update payload:', JSON.stringify(payload, null, 2));
+      console.log('API URL:', `${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`);
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/reservations/${selectedReservation.id}`, {
         method: 'PUT',
@@ -336,21 +340,53 @@ export default function Reservations(): JSX.Element {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ 
-          message: `HTTP error! status: ${response.status}` 
-        }));
-        
-        console.error('API Error Response:', errorData);
-        throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      // Get response text first, then try to parse as JSON
+      const responseText = await response.text();
+      console.log('Raw response text:', responseText);
+
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        console.log('Response is not valid JSON, raw text:', responseText);
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
       }
 
-      const responseData = await response.json();
+      console.log('Parsed response data:', responseData);
+
+      if (!response.ok) {
+        console.error('=== API ERROR DETAILS ===');
+        console.error('Status:', response.status);
+        console.error('Status Text:', response.statusText);
+        console.error('Error Data:', responseData);
+        
+        // Enhanced error message with more details
+        const errorMessage = responseData?.error || responseData?.message || `HTTP ${response.status}`;
+        const errorDetails = responseData?.details || responseData?.stack || 'No additional details';
+        
+        throw new Error(`${errorMessage} (Details: ${errorDetails})`);
+      }
+
+      console.log('=== SUCCESS ===');
       console.log('API Success Response:', responseData);
 
       // SUCCESS: API call succeeded
       
     } catch (err: unknown) {
+      console.error('=== FULL ERROR DETAILS ===');
+      console.error('Error object:', err);
+      console.error('Error type:', typeof err);
+      console.error('Error constructor:', err?.constructor?.name);
+      
+      if (err instanceof Error) {
+        console.error('Error message:', err.message);
+        console.error('Error stack:', err.stack);
+      }
+
       // REVERT OPTIMISTIC UPDATE
       const revertUpdates: Partial<Reservation> = {
         status: originalStatus,
