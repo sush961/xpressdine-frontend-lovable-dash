@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2 } from 'lucide-react';
+import { API_ENDPOINTS } from '@/lib/api';
 
 interface UserProfile {
   id: string;
@@ -51,13 +52,16 @@ export default function UserSettings() {
 
   const loadUserProfile = async () => {
     try {
-      const response = await fetch('/api/user/profile');
+      const response = await fetch(API_ENDPOINTS.PROFILE, {
+        credentials: 'include' // Include cookies for authentication
+      });
       
       if (response.ok) {
         const data = await response.json();
         setProfile(data);
       } else {
-        throw new Error('Failed to load profile');
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to load profile');
       }
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -74,11 +78,12 @@ export default function UserSettings() {
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/user/profile', {
+      const response = await fetch(API_ENDPOINTS.PROFILE, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           full_name: profile.full_name,
           email: profile.email,
@@ -132,11 +137,12 @@ export default function UserSettings() {
 
     setSaving(true);
     try {
-      const response = await fetch('/api/user/password', {
+      const response = await fetch(API_ENDPOINTS.PASSWORD, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           currentPassword: passwordForm.currentPassword,
           newPassword: passwordForm.newPassword
@@ -168,11 +174,12 @@ export default function UserSettings() {
   const handleUpdatePreferences = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/user/preferences', {
+      const response = await fetch(API_ENDPOINTS.PREFERENCES, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify({
           language: profile.language,
           timezone: profile.timezone,
