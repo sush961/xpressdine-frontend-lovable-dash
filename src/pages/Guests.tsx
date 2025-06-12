@@ -60,13 +60,20 @@ export default function Guests() {
     phone: ''
   });
 
-  // Fetch guests from API
-  const fetchGuests = React.useCallback(async () => {
-    console.log('[Guests.tsx] Starting to fetch guests...');
-    setIsLoading(true);
+  // ADD: Pagination state (minimal addition)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMoreGuests, setHasMoreGuests] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // MODIFIED: Fetch guests from API with pagination support
+  const fetchGuests = React.useCallback(async (page = 1, append = false) => {
+    console.log('[Guests.tsx] Starting to fetch guests... page:', page);
+    if (page === 1) setIsLoading(true);
+    else setIsLoadingMore(true);
+    
     try {
-      // Type assertion for the expected response structure from /api/customers GET
-      const result = await ApiClient.get<{ data: Guest[], error: unknown | null }>('/customers');
+      // ADD: Page parameter to API call
+      const result = await ApiClient.get<{ data: Guest[], error: unknown | null }>(`/customers?page=${page}&limit=20`);
       console.log('[Guests.tsx] Response data from ApiClient.get:', result);
 
       if (result.error) {
@@ -90,7 +97,18 @@ export default function Guests() {
       }));
       
       console.log('[Guests.tsx] Formatted guests:', formattedGuests);
-      setGuests(formattedGuests);
+      
+      // MODIFIED: Append or replace guests based on pagination
+      if (append) {
+        setGuests(prev => [...prev, ...formattedGuests]);
+      } else {
+        setGuests(formattedGuests);
+      }
+      
+      // ADD: Check if there are more guests to load
+      setHasMoreGuests(formattedGuests.length === 20);
+      setCurrentPage(page);
+      
     } catch (error) {
       console.error('Failed to fetch guests:', error);
       toast({
@@ -98,20 +116,28 @@ export default function Guests() {
         description: error instanceof Error ? error.message : 'Failed to fetch guests',
         variant: "destructive"
       });
-      setGuests([]);
+      if (!append) setGuests([]);
     } finally {
       console.log('Finished fetching guests');
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
-  }, [toast]); // Added toast to dependency array
+  }, [toast]);
+
+  // ADD: Load more guests function
+  const loadMoreGuests = async () => {
+    if (hasMoreGuests && !isLoadingMore) {
+      await fetchGuests(currentPage + 1, true);
+    }
+  };
 
   // Fetch guests when component mounts
   useEffect(() => {
     console.log('Component mounted, fetching guests...');
-    fetchGuests();
+    fetchGuests(1, false);
   }, [fetchGuests]);
 
-  // Handle adding a new guest
+  // Handle adding a new guest (UNCHANGED)
   const handleAddGuest = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -130,17 +156,15 @@ export default function Guests() {
         name: newGuest.name.trim(),
         email: newGuest.email?.trim() || null,
         phone: newGuest.phone.trim(),
-        notes: '' // Add empty notes field to match backend expectations
+        notes: ''
       };
       
       console.log('[Guests.tsx] Making POST request with payload:', payload);
 
-      // Make the API request
       const result = await ApiClient.post<{ data: Guest, error: string | null }>('/customers', payload);
       console.log('[Guests.tsx] Response from API:', result);
 
       if (result.error) {
-        // Handle specific error cases
         const errorMessage = typeof result.error === 'string' ? result.error : 'An error occurred';
         if (errorMessage.includes('phone number already exists')) {
           toast({
@@ -157,10 +181,9 @@ export default function Guests() {
         });
       }
       
-      // Refresh the guests list
-      await fetchGuests();
+      // MODIFIED: Reset to first page after adding
+      await fetchGuests(1, false);
       
-      // Reset form and close dialog
       setNewGuest({ name: '', email: '', phone: '' });
       setIsAddGuestOpen(false);
       
@@ -174,23 +197,21 @@ export default function Guests() {
     }
   };
 
-  // Handle editing a guest
+  // Handle editing a guest (UNCHANGED)
   const handleEditGuest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGuest) return;
     
     console.log('[Guests.tsx] Attempting to edit guest:', selectedGuest);
     try {
-      // Prepare the data to update
       const { initials, ...guestDataToUpdate } = selectedGuest;
       const payload = {
         name: guestDataToUpdate.name.trim(),
         email: guestDataToUpdate.email?.trim() || null,
         phone: guestDataToUpdate.phone.trim(),
-        notes: '' // Add empty notes field to match backend expectations
+        notes: ''
       };
       
-      // Make the API request
       const result = await ApiClient.put<{ data: Guest, error: string | null }>(
         `/customers/${guestDataToUpdate.id}`,
         payload
@@ -199,7 +220,6 @@ export default function Guests() {
       console.log('[Guests.tsx] Response from API:', result);
 
       if (result.error) {
-        // Handle specific error cases
         const errorMessage = typeof result.error === 'string' ? result.error : 'Failed to update guest';
         if (errorMessage.includes('phone number already exists')) {
           throw new Error('A guest with this phone number already exists');
@@ -208,8 +228,8 @@ export default function Guests() {
         }
       }
       
-      // If we get here, the update was successful
-      await fetchGuests(); // Refresh list
+      // MODIFIED: Reset to first page after editing
+      await fetchGuests(1, false);
       setIsEditGuestOpen(false);
       
       toast({
@@ -227,7 +247,7 @@ export default function Guests() {
     }
   };
 
-  // Handle importing guests from CSV
+  // Handle importing guests from CSV (UNCHANGED)
   const handleImport = async () => {
     if (!csvFile) return;
     
@@ -236,7 +256,6 @@ export default function Guests() {
       const formData = new FormData();
       formData.append('file', csvFile);
       
-      // Assuming the import endpoint might return a summary or status
       const result = await ApiClient.post<{ message?: string; success?: boolean; data?: unknown; error?: unknown | null }>(
         '/customers/import',
         formData
@@ -256,7 +275,8 @@ export default function Guests() {
       }
       
       console.log('[Guests.tsx] Successfully imported guests.');
-      await fetchGuests(); // Refresh list
+      // MODIFIED: Reset to first page after import
+      await fetchGuests(1, false);
       setIsImportOpen(false);
       setCsvFile(null);
       
@@ -275,14 +295,14 @@ export default function Guests() {
     }
   };
 
-  // Filter guests based on search term
+  // Filter guests based on search term (UNCHANGED)
   const filteredGuests = guests.filter(guest => 
     guest.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     (guest.email && guest.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
     guest.phone.includes(searchTerm)
   );
 
-  // Handle deleting a guest
+  // Handle deleting a guest (UNCHANGED)
   const handleDeleteGuest = async (guestId: string) => {
     if (!window.confirm('Are you sure you want to delete this guest? This action cannot be undone.')) {
       return;
@@ -297,8 +317,8 @@ export default function Guests() {
         throw new Error(result.error);
       }
 
-      // Refresh the guests list
-      await fetchGuests();
+      // MODIFIED: Reset to first page after delete
+      await fetchGuests(1, false);
       
       toast({
         title: "Success",
@@ -350,62 +370,83 @@ export default function Guests() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {filteredGuests.map((guest) => (
-              <div 
-                key={guest.id} 
-                className="group flex items-center p-4 border rounded-lg hover:bg-accent cursor-pointer relative"
-                onClick={(e) => {
-                  // Only set selected guest if not clicking the edit button
-                  if (!(e.target as HTMLElement).closest('.edit-button')) {
-                    setSelectedGuest(guest);
-                    setActiveTab('info');
-                  }
-                }}
-              >
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback>{guest.initials}</AvatarFallback>
-                </Avatar>
-                <div className="ml-4 space-y-1 flex-1">
-                  <p className="text-sm font-medium leading-none">{guest.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {guest.email} • {guest.phone}
-                  </p>
-                </div>
-                <div className="flex space-x-1">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="edit-button opacity-0 group-hover:opacity-100 h-8 w-8"
-                    onClick={(e) => {
-                      e.stopPropagation();
+          <div className="space-y-4">
+            <div className="grid gap-4">
+              {filteredGuests.map((guest) => (
+                <div 
+                  key={guest.id} 
+                  className="group flex items-center p-4 border rounded-lg hover:bg-accent cursor-pointer relative"
+                  onClick={(e) => {
+                    if (!(e.target as HTMLElement).closest('.edit-button')) {
                       setSelectedGuest(guest);
-                      setIsEditGuestOpen(true);
-                    }}
-                  >
-                    <Pencil className="h-4 w-4" />
-                    <span className="sr-only">Edit</span>
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="delete-button opacity-0 group-hover:opacity-100 h-8 w-8 text-destructive hover:text-destructive/80"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      await handleDeleteGuest(guest.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Delete</span>
-                  </Button>
+                      setActiveTab('info');
+                    }
+                  }}
+                >
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback>{guest.initials}</AvatarFallback>
+                  </Avatar>
+                  <div className="ml-4 space-y-1 flex-1">
+                    <p className="text-sm font-medium leading-none">{guest.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {guest.email} • {guest.phone}
+                    </p>
+                  </div>
+                  <div className="flex space-x-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="edit-button opacity-0 group-hover:opacity-100 h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedGuest(guest);
+                        setIsEditGuestOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      <span className="sr-only">Edit</span>
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="delete-button opacity-0 group-hover:opacity-100 h-8 w-8 text-destructive hover:text-destructive/80"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await handleDeleteGuest(guest.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                  </div>
                 </div>
+              ))}
+            </div>
+            
+            {/* ADD: Load More Button - only show if there are more guests and not searching */}
+            {hasMoreGuests && !searchTerm && (
+              <div className="flex justify-center pt-4">
+                <Button 
+                  variant="outline" 
+                  onClick={loadMoreGuests}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                      Loading...
+                    </>
+                  ) : (
+                    'Load More Guests'
+                  )}
+                </Button>
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>
 
-      {/* Add Guest Dialog */}
+      {/* All dialogs remain UNCHANGED */}
       <Dialog open={isAddGuestOpen} onOpenChange={setIsAddGuestOpen}>
         <DialogContent>
           <DialogHeader>
@@ -450,7 +491,6 @@ export default function Guests() {
         </DialogContent>
       </Dialog>
 
-      {/* Import Dialog */}
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
         <DialogContent>
           <DialogHeader>
@@ -485,7 +525,6 @@ export default function Guests() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Guest Dialog */}
       <Dialog open={isEditGuestOpen} onOpenChange={setIsEditGuestOpen}>
         <DialogContent>
           <DialogHeader>
